@@ -215,3 +215,71 @@ fn empty_file_has_no_rows_and_no_columns() {
     assert_eq!(summary.rows, RowCount::Exact(0));
     assert!(summary.columns.is_empty());
 }
+
+fn bounds(summary: &TableSummary, column: usize) -> Option<(&str, &str)> {
+    summary.columns[column]
+        .bounds
+        .as_ref()
+        .map(|b| (b.min.as_str(), b.max.as_str()))
+}
+
+#[test]
+fn integer_bounds_compare_by_value() {
+    let summary = summarize("int_bounds.csv", "n\n10\n9\n-3\n");
+
+    assert_eq!(bounds(&summary, 0), Some(("-3", "10")));
+}
+
+#[test]
+fn float_bounds_keep_the_decimal_comma() {
+    let summary = summarize("float_bounds.csv", "id;fiyat\n1;12,50\n2;7,25\n3;349,00\n");
+
+    assert_eq!(bounds(&summary, 1), Some(("7,25", "349,00")));
+}
+
+#[test]
+fn date_and_datetime_bounds_are_chronological() {
+    let content = "d,t\n2026-09-05,2026-09-05 10:00\n2026-09-01,2026-09-01T09:00\n";
+
+    let summary = summarize("date_bounds.csv", content);
+
+    assert_eq!(bounds(&summary, 0), Some(("2026-09-01", "2026-09-05")));
+    assert_eq!(
+        bounds(&summary, 1),
+        Some(("2026-09-01T09:00", "2026-09-05 10:00"))
+    );
+}
+
+#[test]
+fn boolean_bounds_put_false_first() {
+    let summary = summarize("bool_bounds.csv", "b\ntrue\nFALSE\n");
+
+    assert_eq!(bounds(&summary, 0), Some(("FALSE", "true")));
+}
+
+#[test]
+fn bounds_skip_empty_values() {
+    let summary = summarize("empty_bounds.csv", "n,x\n5,a\n,b\n2,c\n");
+
+    assert_eq!(bounds(&summary, 0), Some(("2", "5")));
+}
+
+#[test]
+fn text_columns_have_no_bounds() {
+    let summary = summarize("text_bounds.csv", "ad\nZeynep\nÇağla\n");
+
+    assert_eq!(bounds(&summary, 0), None);
+}
+
+#[test]
+fn a_sample_gives_no_bounds() {
+    let content = format!("n\n{}", "1\n".repeat(10));
+    let limits = Limits {
+        sample_rows: 3,
+        ..Limits::default()
+    };
+
+    let summary = summarize_bytes("sample_bounds.csv", content.as_bytes(), &limits);
+
+    assert_eq!(summary.columns[0].bounds, None);
+}

@@ -1,8 +1,19 @@
 use std::fmt;
+use std::path::PathBuf;
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Options {
     pub language: Option<String>,
+    /// File to preview right after the window opens.
+    pub file: Option<PathBuf>,
+    pub menu: Option<MenuChange>,
+}
+
+/// Adds or removes the Explorer context menu entry instead of opening the window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MenuChange {
+    Register,
+    Unregister,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -23,17 +34,26 @@ impl fmt::Display for ArgsError {
 impl std::error::Error for ArgsError {}
 
 const LANG_FLAG: &str = "--lang";
+const REGISTER_MENU_FLAG: &str = "--register-menu";
+const UNREGISTER_MENU_FLAG: &str = "--unregister-menu";
 
 /// Parses the command line arguments after the program name.
 pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Result<Options, ArgsError> {
     let mut options = Options::default();
     let mut args = args.into_iter();
     while let Some(arg) = args.next() {
-        if arg != LANG_FLAG {
-            return Err(ArgsError::UnknownArgument(arg));
+        match arg.as_str() {
+            LANG_FLAG => {
+                let language = args.next().ok_or(ArgsError::MissingValue(LANG_FLAG))?;
+                options.language = Some(language);
+            }
+            REGISTER_MENU_FLAG => options.menu = Some(MenuChange::Register),
+            UNREGISTER_MENU_FLAG => options.menu = Some(MenuChange::Unregister),
+            _ if arg.starts_with("--") || options.file.is_some() => {
+                return Err(ArgsError::UnknownArgument(arg));
+            }
+            _ => options.file = Some(PathBuf::from(arg)),
         }
-        let language = args.next().ok_or(ArgsError::MissingValue(LANG_FLAG))?;
-        options.language = Some(language);
     }
     Ok(options)
 }
@@ -48,7 +68,7 @@ mod tests {
 
     #[test]
     fn no_arguments_keeps_system_language() {
-        assert_eq!(parse(&[]), Ok(Options { language: None }));
+        assert_eq!(parse(&[]), Ok(Options::default()));
     }
 
     #[test]
@@ -56,7 +76,8 @@ mod tests {
         assert_eq!(
             parse(&["--lang", "tr"]),
             Ok(Options {
-                language: Some("tr".into())
+                language: Some("tr".into()),
+                ..Options::default()
             })
         );
     }
@@ -72,5 +93,41 @@ mod tests {
             parse(&["--verbose"]),
             Err(ArgsError::UnknownArgument("--verbose".into()))
         );
+    }
+
+    #[test]
+    fn file_argument_is_opened() {
+        assert_eq!(
+            parse(&[r"C:\data\sales.csv"]),
+            Ok(Options {
+                file: Some(PathBuf::from(r"C:\data\sales.csv")),
+                ..Options::default()
+            })
+        );
+    }
+
+    #[test]
+    fn file_argument_works_with_the_lang_flag() {
+        let options = parse(&["--lang", "en", "a.parquet"]).expect("valid arguments");
+
+        assert_eq!(options.language.as_deref(), Some("en"));
+        assert_eq!(options.file, Some(PathBuf::from("a.parquet")));
+    }
+
+    #[test]
+    fn second_file_argument_is_an_error() {
+        assert_eq!(
+            parse(&["a.csv", "b.csv"]),
+            Err(ArgsError::UnknownArgument("b.csv".into()))
+        );
+    }
+
+    #[test]
+    fn menu_flags_choose_the_menu_change() {
+        let register = parse(&["--register-menu"]).expect("valid arguments");
+        let unregister = parse(&["--unregister-menu"]).expect("valid arguments");
+
+        assert_eq!(register.menu, Some(MenuChange::Register));
+        assert_eq!(unregister.menu, Some(MenuChange::Unregister));
     }
 }

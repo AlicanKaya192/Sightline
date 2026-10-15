@@ -4,6 +4,166 @@ msgstr ""
 "Language: tr\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-msgctxt "AppWindow"
+msgctxt "EmptyView"
 msgid "Drop a data file here to preview it."
 msgstr "Önizlemek için bir veri dosyasını buraya bırakın."
+
+msgctxt "EmptyView"
+msgid "Sightline reads CSV and Parquet files. The file is never changed, and nothing leaves this computer."
+msgstr "Sightline CSV ve Parquet dosyalarını okur. Dosya hiç değiştirilmez ve hiçbir şey bu bilgisayarın dışına çıkmaz."
+
+msgctxt "LoadingView"
+msgid "Reading {}…"
+msgstr "{} okunuyor…"
+
+msgctxt "FailureView"
+msgid "Could not open"
+msgstr "Açılamadı"
+
+msgctxt "FailureView"
+msgid "Drop another file to try again."
+msgstr "Yeniden denemek için başka bir dosya bırakın."
+
+msgctxt "FailureView"
+msgid "The file could not be found."
+msgstr "Dosya bulunamadı."
+
+msgctxt "FailureView"
+msgid "Sightline is not allowed to read this file."
+msgstr "Sightline'ın bu dosyayı okuma izni yok."
+
+msgctxt "FailureView"
+msgid "This file type is not supported. Sightline opens CSV and Parquet files."
+msgstr "Bu dosya türü desteklenmiyor. Sightline CSV ve Parquet dosyalarını açar."
+
+msgctxt "FailureView"
+msgid "The file could not be read. It may be damaged, or its content may not match its name."
+msgstr "Dosya okunamadı. Bozuk olabilir ya da içeriği adıyla uyuşmuyor olabilir."
+
+msgctxt "FailureView"
+msgid "The file could not be read."
+msgstr "Dosya okunamadı."
+
+msgctxt "FileHeader"
+msgid "at least {}"
+msgstr "en az {}"
+
+msgctxt "FileHeader"
+msgid "rows"
+msgstr "satır"
+
+msgctxt "FileHeader"
+msgid "column"
+msgid_plural "columns"
+msgstr[0] "sütun"
+msgstr[1] "sütun"
+
+msgctxt "FileHeader"
+msgid "row group"
+msgid_plural "row groups"
+msgstr[0] "satır grubu"
+msgstr[1] "satır grubu"
+
+msgctxt "FileHeader"
+msgid "delimiter"
+msgstr "ayırıcı"
+
+msgctxt "NullsCell"
+msgid "{}%"
+msgstr "%{}"
+
+msgctxt "NullsCell"
+msgid "sample: {}"
+msgstr "örneklem: {}"
+
+msgctxt "SchemaTable"
+msgid "Column"
+msgstr "Sütun"
+
+msgctxt "SchemaTable"
+msgid "Type"
+msgstr "Tür"
+
+msgctxt "SchemaTable"
+msgid "Missing"
+msgstr "Boş"
+
+msgctxt "SchemaTable"
+msgid "Min"
+msgstr "En küçük"
+
+msgctxt "SchemaTable"
+msgid "Max"
+msgstr "En büyük"
+
+msgctxt "SchemaTable"
+msgid "boolean"
+msgstr "mantıksal"
+
+msgctxt "SchemaTable"
+msgid "integer"
+msgstr "tamsayı"
+
+msgctxt "SchemaTable"
+msgid "float"
+msgstr "kayan noktalı"
+
+msgctxt "SchemaTable"
+msgid "decimal"
+msgstr "ondalık"
+
+msgctxt "SchemaTable"
+msgid "date"
+msgstr "tarih"
+
+msgctxt "SchemaTable"
+msgid "time"
+msgstr "saat"
+
+msgctxt "SchemaTable"
+msgid "date and time"
+msgstr "tarih ve saat"
+
+msgctxt "SchemaTable"
+msgid "text"
+msgstr "metin"
+
+msgctxt "SchemaTable"
+msgid "binary"
+msgstr "ikili"
+
+msgctxt "SchemaTable"
+msgid "nested"
+msgstr "iç içe"
+
+msgctxt "HeadTable"
+msgid "null"
+msgstr "boş"
+
+msgctxt "PreviewView"
+msgid "Schema"
+msgstr "Şema"
+
+msgctxt "PreviewView"
+msgid "First rows"
+msgstr "İlk satırlar"
+
+msgctxt "PreviewView"
+msgid "Warnings"
+msgstr "Uyarılar"
+
+msgctxt "PreviewView"
+msgid "Warnings arrive in a later version."
+msgstr "Uyarılar sonraki bir sürümde gelecek."
+
+msgctxt "AppWindow"
+msgid "Preview with Sightline"
+msgstr "Sightline ile önizle"
+
+msgctxt "decimal separator"
+msgid "."
+msgstr ","
+
+msgctxt "thousands separator"
+msgid ","
+msgstr "."

@@ -1,16 +1,744 @@
-import { VerticalBox } from "std-widgets.slint";
+import { ScrollView, Spinner, Palette } from "std-widgets.slint";
 
-export component AppWindow inherits Window {
-    title: "Sightline";
-    preferred-width: 480px;
-    preferred-height: 320px;
+export enum ViewState { empty, loading, loaded, failed }
 
-    VerticalBox {
-        alignment: center;
+export enum FileFormat { parquet, csv }
+
+export enum ColumnKind { boolean, integer, float, decimal, date, time, date-time, text, binary, nested }
+
+export enum NullsBasis { whole-file, sample }
+
+export enum FailureKind { not-found, permission-denied, unsupported-format, unreadable-content, other }
+
+export struct FileInfo {
+    name: string,
+    size: string,
+    format: FileFormat,
+    row-groups: int,
+    delimiter: string,
+    encoding: string,
+    rows: string,
+    rows-exact: bool,
+    columns: int,
+}
+
+export struct SchemaRow {
+    name: string,
+    kind: ColumnKind,
+    nulls-known: bool,
+    nulls-ratio: float,
+    nulls-percent: string,
+    nulls-basis: NullsBasis,
+    sample-rows: string,
+    bounds-known: bool,
+    min: string,
+    max: string,
+}
+
+export struct Cell {
+    text: string,
+    missing: bool,
+}
+
+export struct FailureInfo {
+    kind: FailureKind,
+    file-name: string,
+    detail: string,
+}
+
+// Colors from the project template; the dark set follows the Windows theme.
+global Theme {
+    out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
+    out property <color> background: dark ? #0E141A : #F2F4F6;
+    out property <color> surface: dark ? #151D25 : #FFFFFF;
+    out property <color> surface-raised: dark ? #1D2731 : #E8ECF0;
+    out property <color> text: dark ? #E4EAF0 : #16212B;
+    out property <color> text-muted: dark ? #98A5B2 : #56626E;
+    out property <color> line: dark ? #2A3541 : #D3DAE1;
+    out property <color> accent: dark ? #E39A48 : #A9570B;
+    out property <color> accent-soft: dark ? #3A2915 : #F5E6D4;
+    // Accent text on accent-soft; the light accent is below 4.5:1 there.
+    out property <color> accent-text: dark ? #E39A48 : #944C0A;
+    out property <color> warn: dark ? #E2B252 : #9A6410;
+    out property <color> bad: dark ? #F07A82 : #AE2730;
+    out property <color> bad-soft: dark ? #3A1A1D : #F7DEDF;
+    out property <string> mono-font: "Consolas";
+    out property <length> radius: 6px;
+}
+
+component FormatBadge inherits Rectangle {
+    in property <string> text;
+    background: Theme.accent;
+    border-radius: 4px;
+
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        padding-top: 2px;
+        padding-bottom: 2px;
 
         Text {
-            text: @tr("Drop a data file here to preview it.");
-            horizontal-alignment: center;
+            text: root.text;
+            color: Theme.surface;
+            font-family: Theme.mono-font;
+            font-size: 12px;
+            font-weight: 700;
+            vertical-alignment: center;
         }
+    }
+}
+
+component SampleChip inherits Rectangle {
+    in property <string> text;
+    background: Theme.accent-soft;
+    border-radius: 4px;
+
+    HorizontalLayout {
+        padding-left: 6px;
+        padding-right: 6px;
+
+        Text {
+            text: root.text;
+            color: Theme.accent-text;
+            font-size: 12px;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component Fact inherits HorizontalLayout {
+    in property <string> value;
+    in property <string> label;
+    spacing: 5px;
+
+    Text {
+        text: root.value;
+        color: Theme.text;
+        font-weight: 600;
+    }
+
+    Text {
+        text: root.label;
+        color: Theme.text-muted;
+    }
+}
+
+component EmptyView inherits VerticalLayout {
+    in property <bool> drop-hover;
+    padding: 32px;
+
+    Rectangle {
+        background: root.drop-hover ? Theme.accent-soft : Theme.surface;
+        border-width: 2px;
+        border-color: root.drop-hover ? Theme.accent : Theme.line;
+        border-radius: 12px;
+
+        VerticalLayout {
+            alignment: center;
+            padding: 24px;
+            spacing: 12px;
+
+            Text {
+                text: @tr("Drop a data file here to preview it.");
+                color: Theme.text;
+                font-size: 20px;
+                font-weight: 600;
+                horizontal-alignment: center;
+                wrap: word-wrap;
+            }
+
+            Text {
+                text: @tr("Sightline reads CSV and Parquet files. The file is never changed, and nothing leaves this computer.");
+                color: Theme.text-muted;
+                horizontal-alignment: center;
+                wrap: word-wrap;
+            }
+
+            HorizontalLayout {
+                alignment: center;
+                spacing: 8px;
+
+                FormatBadge {
+                    text: "CSV";
+                }
+
+                FormatBadge {
+                    text: "PARQUET";
+                }
+            }
+        }
+    }
+}
+
+component LoadingView inherits VerticalLayout {
+    in property <string> file-name;
+    alignment: center;
+    spacing: 12px;
+
+    HorizontalLayout {
+        alignment: center;
+
+        Spinner {
+            indeterminate: true;
+            width: 32px;
+            height: 32px;
+        }
+    }
+
+    Text {
+        text: @tr("Reading {}…", root.file-name);
+        color: Theme.text-muted;
+        horizontal-alignment: center;
+    }
+}
+
+component FailureView inherits VerticalLayout {
+    in property <FailureInfo> failure;
+    alignment: center;
+    padding: 32px;
+    spacing: 10px;
+
+    HorizontalLayout {
+        alignment: center;
+
+        Rectangle {
+            background: Theme.bad-soft;
+            border-radius: 4px;
+
+            HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 8px;
+                padding-top: 2px;
+                padding-bottom: 2px;
+
+                Text {
+                    text: @tr("Could not open");
+                    color: Theme.bad;
+                    font-size: 12px;
+                    font-weight: 600;
+                }
+            }
+        }
+    }
+
+    Text {
+        text: root.message();
+        color: Theme.text;
+        font-size: 18px;
+        font-weight: 600;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+    }
+
+    Text {
+        text: root.failure.file-name;
+        color: Theme.text-muted;
+        font-family: Theme.mono-font;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+    }
+
+    Text {
+        text: root.failure.detail;
+        color: Theme.text-muted;
+        font-size: 12px;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+    }
+
+    Text {
+        text: @tr("Drop another file to try again.");
+        color: Theme.text-muted;
+        horizontal-alignment: center;
+    }
+
+    pure function message() -> string {
+        if root.failure.kind == FailureKind.not-found {
+            return @tr("The file could not be found.");
+        }
+        if root.failure.kind == FailureKind.permission-denied {
+            return @tr("Sightline is not allowed to read this file.");
+        }
+        if root.failure.kind == FailureKind.unsupported-format {
+            return @tr("This file type is not supported. Sightline opens CSV and Parquet files.");
+        }
+        if root.failure.kind == FailureKind.unreadable-content {
+            return @tr("The file could not be read. It may be damaged, or its content may not match its name.");
+        }
+        return @tr("The file could not be read.");
+    }
+}
+
+component FileHeader inherits Rectangle {
+    in property <FileInfo> info;
+    background: Theme.surface;
+
+    VerticalLayout {
+        padding-left: 20px;
+        padding-right: 20px;
+        padding-top: 16px;
+        padding-bottom: 12px;
+        spacing: 8px;
+
+        HorizontalLayout {
+            alignment: start;
+            spacing: 10px;
+
+            FormatBadge {
+                text: root.info.format == FileFormat.parquet ? "PARQUET" : "CSV";
+            }
+
+            Text {
+                text: root.info.name;
+                color: Theme.text;
+                font-size: 20px;
+                font-weight: 600;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+
+        HorizontalLayout {
+            alignment: start;
+            spacing: 20px;
+
+            Fact {
+                value: root.info.rows-exact ? root.info.rows : @tr("at least {}", root.info.rows);
+                label: @tr("rows");
+            }
+
+            Fact {
+                value: root.info.columns;
+                label: @tr("column" | "columns" % root.info.columns);
+            }
+
+            Fact {
+                value: root.info.size;
+            }
+
+            if root.info.format == FileFormat.parquet: Fact {
+                value: root.info.row-groups;
+                label: @tr("row group" | "row groups" % root.info.row-groups);
+            }
+            if root.info.format == FileFormat.csv: Fact {
+                value: root.info.delimiter;
+                label: @tr("delimiter");
+            }
+            if root.info.format == FileFormat.csv: Fact {
+                value: root.info.encoding;
+            }
+        }
+    }
+}
+
+component TabButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected;
+    in property <bool> show-focus;
+    callback clicked;
+    accessible-role: tab;
+    accessible-label: root.text;
+    border-radius: 4px;
+    border-width: root.show-focus ? 1px : 0;
+    border-color: Theme.accent;
+
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        padding-top: 9px;
+        padding-bottom: 9px;
+
+        Text {
+            text: root.text;
+            color: root.selected ? Theme.text : Theme.text-muted;
+            font-weight: root.selected ? 600 : 400;
+        }
+    }
+
+    Rectangle {
+        x: 0;
+        y: parent.height - self.height;
+        width: parent.width;
+        height: 2px;
+        background: root.selected ? Theme.accent : transparent;
+    }
+
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+// Left and right arrow keys move between tabs once the bar has focus.
+component TabBar inherits Rectangle {
+    in property <[string]> titles;
+    in-out property <int> current;
+    background: Theme.surface;
+
+    keys := FocusScope {
+        key-pressed(event) => {
+            if event.text == Key.LeftArrow {
+                root.current = Math.max(0, root.current - 1);
+                return accept;
+            }
+            if event.text == Key.RightArrow {
+                root.current = Math.min(root.titles.length - 1, root.current + 1);
+                return accept;
+            }
+            return reject;
+        }
+
+        HorizontalLayout {
+            alignment: start;
+            padding-left: 8px;
+
+            for title[index] in root.titles: TabButton {
+                text: title;
+                selected: index == root.current;
+                show-focus: keys.has-focus && index == root.current;
+                clicked => {
+                    root.current = index;
+                }
+            }
+        }
+    }
+
+    Rectangle {
+        x: 0;
+        y: parent.height - self.height;
+        width: parent.width;
+        height: 1phx;
+        background: Theme.line;
+    }
+}
+
+component HeaderCell inherits Text {
+    color: Theme.text-muted;
+    font-size: 12px;
+    font-weight: 600;
+    vertical-alignment: center;
+    overflow: elide;
+}
+
+component NullsCell inherits HorizontalLayout {
+    in property <SchemaRow> summary;
+    spacing: 8px;
+    alignment: start;
+
+    if !root.summary.nulls-known: Text {
+        text: "—";
+        color: Theme.text-muted;
+        vertical-alignment: center;
+    }
+    if root.summary.nulls-known: Text {
+        text: @tr("{}%", root.summary.nulls-percent);
+        color: Theme.text;
+        width: 56px;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+    }
+    if root.summary.nulls-known: VerticalLayout {
+        alignment: center;
+        width: 56px;
+
+        Rectangle {
+            height: 6px;
+            border-radius: 3px;
+            background: Theme.surface-raised;
+
+            Rectangle {
+                x: 0;
+                width: parent.width * Math.min(1, root.summary.nulls-ratio);
+                height: parent.height;
+                border-radius: 3px;
+                background: Theme.warn;
+            }
+        }
+    }
+    if root.summary.nulls-known && root.summary.nulls-basis == NullsBasis.sample: VerticalLayout {
+        alignment: center;
+
+        SampleChip {
+            text: @tr("sample: {}", root.summary.sample-rows);
+        }
+    }
+}
+
+component SchemaTable inherits ScrollView {
+    in property <[SchemaRow]> rows;
+    property <length> type-width: 120px;
+    property <length> nulls-width: 250px;
+    property <length> bound-width: 150px;
+
+    VerticalLayout {
+        alignment: start;
+
+        Rectangle {
+            background: Theme.surface-raised;
+
+            HorizontalLayout {
+                padding-left: 20px;
+                padding-right: 20px;
+                padding-top: 8px;
+                padding-bottom: 8px;
+                spacing: 16px;
+
+                HeaderCell {
+                    text: @tr("Column");
+                    min-width: 140px;
+                    horizontal-stretch: 1;
+                }
+
+                HeaderCell {
+                    text: @tr("Type");
+                    width: root.type-width;
+                }
+
+                HeaderCell {
+                    text: @tr("Missing");
+                    width: root.nulls-width;
+                }
+
+                HeaderCell {
+                    text: @tr("Min");
+                    width: root.bound-width;
+                }
+
+                HeaderCell {
+                    text: @tr("Max");
+                    width: root.bound-width;
+                }
+            }
+        }
+
+        for row in root.rows: Rectangle {
+            height: 34px;
+
+            HorizontalLayout {
+                padding-left: 20px;
+                padding-right: 20px;
+                spacing: 16px;
+
+                Text {
+                    text: row.name;
+                    color: Theme.text;
+                    font-family: Theme.mono-font;
+                    min-width: 140px;
+                    horizontal-stretch: 1;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+
+                Text {
+                    text: root.kind-label(row.kind);
+                    color: Theme.text-muted;
+                    width: root.type-width;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+
+                NullsCell {
+                    summary: row;
+                    width: root.nulls-width;
+                }
+
+                Text {
+                    text: row.bounds-known ? row.min : "—";
+                    color: row.bounds-known ? Theme.text : Theme.text-muted;
+                    font-family: Theme.mono-font;
+                    width: root.bound-width;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+
+                Text {
+                    text: row.bounds-known ? row.max : "—";
+                    color: row.bounds-known ? Theme.text : Theme.text-muted;
+                    font-family: Theme.mono-font;
+                    width: root.bound-width;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+
+            Rectangle {
+                x: 0;
+                y: parent.height - self.height;
+                width: parent.width;
+                height: 1phx;
+                background: Theme.line;
+            }
+        }
+    }
+
+    pure function kind-label(kind: ColumnKind) -> string {
+        if kind == ColumnKind.boolean {
+            return @tr("boolean");
+        }
+        if kind == ColumnKind.integer {
+            return @tr("integer");
+        }
+        if kind == ColumnKind.float {
+            return @tr("float");
+        }
+        if kind == ColumnKind.decimal {
+            return @tr("decimal");
+        }
+        if kind == ColumnKind.date {
+            return @tr("date");
+        }
+        if kind == ColumnKind.time {
+            return @tr("time");
+        }
+        if kind == ColumnKind.date-time {
+            return @tr("date and time");
+        }
+        if kind == ColumnKind.text {
+            return @tr("text");
+        }
+        if kind == ColumnKind.binary {
+            return @tr("binary");
+        }
+        return @tr("nested");
+    }
+}
+
+component HeadTable inherits ScrollView {
+    in property <[string]> titles;
+    in property <[[Cell]]> rows;
+    property <length> cell-width: 150px;
+
+    VerticalLayout {
+        alignment: start;
+
+        Rectangle {
+            background: Theme.surface-raised;
+
+            HorizontalLayout {
+                alignment: start;
+                padding-left: 20px;
+                padding-right: 20px;
+                padding-top: 8px;
+                padding-bottom: 8px;
+                spacing: 16px;
+
+                for title in root.titles: HeaderCell {
+                    text: title;
+                    font-family: Theme.mono-font;
+                    width: root.cell-width;
+                }
+            }
+        }
+
+        for row[index] in root.rows: Rectangle {
+            height: 30px;
+            background: Math.mod(index, 2) == 1 ? Theme.background : transparent;
+
+            HorizontalLayout {
+                alignment: start;
+                padding-left: 20px;
+                padding-right: 20px;
+                spacing: 16px;
+
+                for cell in row: Text {
+                    text: cell.missing ? @tr("null") : cell.text;
+                    color: cell.missing ? Theme.text-muted : Theme.text;
+                    font-family: Theme.mono-font;
+                    font-italic: cell.missing;
+                    width: root.cell-width;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+    }
+}
+
+component PreviewView inherits VerticalLayout {
+    in property <FileInfo> info;
+    in property <[SchemaRow]> schema;
+    in property <[string]> head-titles;
+    in property <[[Cell]]> head-rows;
+    property <int> current-tab: 0;
+
+    FileHeader {
+        info: root.info;
+    }
+
+    TabBar {
+        titles: [@tr("Schema"), @tr("First rows"), @tr("Warnings")];
+        current <=> root.current-tab;
+    }
+
+    Rectangle {
+        background: Theme.surface;
+        vertical-stretch: 1;
+
+        if root.current-tab == 0: SchemaTable {
+            rows: root.schema;
+        }
+        if root.current-tab == 1: HeadTable {
+            titles: root.head-titles;
+            rows: root.head-rows;
+        }
+        if root.current-tab == 2: Text {
+            text: @tr("Warnings arrive in a later version.");
+            color: Theme.text-muted;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+}
+
+export component AppWindow inherits Window {
+    in property <ViewState> state: ViewState.empty;
+    in property <bool> drop-hover;
+    in property <string> loading-name;
+    in property <FileInfo> info;
+    in property <[SchemaRow]> schema;
+    in property <[string]> head-titles;
+    in property <[[Cell]]> head-rows;
+    in property <FailureInfo> failure;
+    // Read when the shell menu is registered, so the menu uses the app's translation.
+    out property <string> menu-verb: @tr("Preview with Sightline");
+    // Read by the number formatting, so numbers follow the window's language.
+    out property <string> decimal-separator: @tr("decimal separator" => ".");
+    out property <string> thousands-separator: @tr("thousands separator" => ",");
+
+    title: root.state == ViewState.loaded ? root.info.name + " — Sightline" : "Sightline";
+    background: Theme.background;
+    default-font-family: "Segoe UI";
+    default-font-size: 14px;
+    preferred-width: 960px;
+    preferred-height: 600px;
+    min-width: 560px;
+    min-height: 360px;
+
+    VerticalLayout {
+        if root.state == ViewState.empty: EmptyView {
+            drop-hover: root.drop-hover;
+        }
+        if root.state == ViewState.loading: LoadingView {
+            file-name: root.loading-name;
+        }
+        if root.state == ViewState.failed: FailureView {
+            failure: root.failure;
+        }
+        if root.state == ViewState.loaded: PreviewView {
+            info: root.info;
+            schema: root.schema;
+            head-titles: root.head-titles;
+            head-rows: root.head-rows;
+        }
+    }
+
+    // Outline while a file is dragged over a window that already shows one.
+    if root.drop-hover && root.state != ViewState.empty: Rectangle {
+        width: 100%;
+        height: 100%;
+        border-width: 2px;
+        border-color: Theme.accent;
     }
 }

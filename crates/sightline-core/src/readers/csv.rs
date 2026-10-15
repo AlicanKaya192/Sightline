@@ -1,5 +1,6 @@
 //! CSV: reads the start of the file, detects encoding and delimiter, infers types.
 
+use std::cmp::Ordering;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
@@ -8,8 +9,8 @@ use encoding_rs::WINDOWS_1254;
 
 use super::{Limits, ReadError, Reader, has_extension};
 use crate::summary::{
-    Basis, ColumnSummary, ColumnType, NullCount, RowCount, Summary, TableFormat, TableSummary,
-    TextEncoding,
+    Basis, Bounds, ColumnSummary, ColumnType, NullCount, RowCount, Summary, TableFormat,
+    TableSummary, TextEncoding,
 };
 
 /// Ties go to the first candidate.
@@ -191,15 +192,21 @@ fn summarize_columns(
                 .filter_map(|row| row[index].as_deref())
                 .map(str::trim)
                 .collect();
+            let column_type = infer_type(&values, decimal_comma);
             ColumnSummary {
                 name: name.clone(),
-                column_type: infer_type(&values, decimal_comma),
+                column_type,
                 nulls: Some(NullCount {
                     count: (sample.len() - values.len()) as u64,
                     of_rows: sample.len() as u64,
                     basis,
                 }),
-                bounds: None,
+                // `Bounds` cannot say "from a sample", so a sample gives none.
+                bounds: if basis == Basis::WholeFile {
+                    value_bounds(&values, column_type, decimal_comma)
+                } else {
+                    None
+                },
             }
         })
         .collect()
@@ -224,6 +231,31 @@ fn infer_type(values: &[&str], decimal_comma: bool) -> ColumnType {
     }
 }
 
+/// Smallest and largest value as written in the file, in the column type's order.
+/// Text has none: byte order is not alphabetical order in Turkish.
+fn value_bounds(values: &[&str], column_type: ColumnType, decimal_comma: bool) -> Option<Bounds> {
+    match column_type {
+        ColumnType::Boolean => bounds_by(values, |v| v.eq_ignore_ascii_case("true")),
+        ColumnType::Integer => bounds_by(values, |v| v.parse::<i64>().ok()),
+        ColumnType::Float => bounds_by(values, |v| parse_float(v, decimal_comma)),
+        ColumnType::Date => bounds_by(values, str::to_string),
+        // `T` and a space may both separate date and time.
+        ColumnType::DateTime => bounds_by(values, |v| v.replacen('T', " ", 1)),
+        _ => None,
+    }
+}
+
+fn bounds_by<K: PartialOrd>(values: &[&str], key: impl Fn(&str) -> K) -> Option<Bounds> {
+    let keyed: Vec<(K, &str)> = values.iter().map(|&value| (key(value), value)).collect();
+    let order = |a: &&(K, &str), b: &&(K, &str)| a.0.partial_cmp(&b.0).unwrap_or(Ordering::Equal);
+    let (_, min) = keyed.iter().min_by(order)?;
+    let (_, max) = keyed.iter().max_by(order)?;
+    Some(Bounds {
+        min: min.to_string(),
+        max: max.to_string(),
+    })
+}
+
 fn is_boolean(value: &str) -> bool {
     value.eq_ignore_ascii_case("true") || value.eq_ignore_ascii_case("false")
 }
@@ -233,10 +265,14 @@ fn is_integer(value: &str) -> bool {
 }
 
 fn is_float(value: &str, decimal_comma: bool) -> bool {
+    parse_float(value, decimal_comma).is_some()
+}
+
+fn parse_float(value: &str, decimal_comma: bool) -> Option<f64> {
     if decimal_comma {
-        value.replacen(',', ".", 1).parse::<f64>().is_ok()
+        value.replacen(',', ".", 1).parse().ok()
     } else {
-        value.parse::<f64>().is_ok()
+        value.parse().ok()
     }
 }
 
