@@ -1,0 +1,9 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: tr\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgctxt "AppWindow"
+msgid "Drop a data file here to preview it."
+msgstr "Önizlemek için bir veri dosyasını buraya bırakın."

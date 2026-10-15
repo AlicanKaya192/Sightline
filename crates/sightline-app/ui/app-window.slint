@@ -1,0 +1,16 @@
+import { VerticalBox } from "std-widgets.slint";
+
+export component AppWindow inherits Window {
+    title: "Sightline";
+    preferred-width: 480px;
+    preferred-height: 320px;
+
+    VerticalBox {
+        alignment: center;
+
+        Text {
+            text: @tr("Drop a data file here to preview it.");
+            horizontal-alignment: center;
+        }
+    }
+}

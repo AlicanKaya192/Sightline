@@ -1,0 +1,8 @@
+# Rust derleme çıktıları
+/target/
+
+# Editör ve sistem
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
