@@ -1,0 +1,12 @@
+[package]
+name = "sightline-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "sightline"
+path = "src/main.rs"
+
+[dependencies]
+sightline-core = { path = "../sightline-core" }

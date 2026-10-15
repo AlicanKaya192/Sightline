@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/sightline-core", "crates/sightline-app"]
+members = ["crates/sightline-core", "crates/sightline-app", "crates/sightline-cli"]
 resolver = "3"
 
 [workspace.package]
