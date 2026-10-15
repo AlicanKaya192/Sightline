@@ -87,8 +87,14 @@ fn show_table(window: &AppWindow, name: &str, loaded: &Loaded) {
     );
     window.set_info(view::file_info(name, loaded.size_bytes, table, &format));
     window.set_schema(model(view::schema_rows(&table.columns, &format)));
+    let histograms: Vec<ModelRc<f32>> = view::histograms(&table.columns)
+        .into_iter()
+        .map(model)
+        .collect();
     window.set_head_titles(model(titles));
     window.set_head_rows(model(rows));
+    window.set_histograms(model(histograms));
+    window.set_warnings(model(view::warning_rows(&table.insights, &format)));
     window.set_state(ViewState::Loaded);
 }
 

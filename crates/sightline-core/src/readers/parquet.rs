@@ -13,6 +13,8 @@ use ::parquet::record::{Field, Row};
 use ::parquet::schema::types::ColumnDescriptor;
 
 use super::{Limits, ReadError, Reader, has_extension};
+use crate::insights::insights;
+use crate::profile::profile;
 use crate::summary::{
     Basis, Bounds, ColumnSummary, ColumnType, NullCount, RowCount, Summary, TableFormat,
     TableSummary,
@@ -31,23 +33,21 @@ impl Reader for ParquetReader {
         let total_rows = row_count(metadata)?;
         let mut columns = columns_from_metadata(metadata, total_rows);
 
-        let needs_sample = columns.iter().any(|column| column.nulls.is_none());
-        let rows_to_read = if needs_sample {
-            limits.sample_rows.max(limits.head_rows)
-        } else {
-            limits.head_rows
-        };
-        let rows = read_rows(&reader, rows_to_read)?;
-        let sample = &rows[..rows.len().min(limits.sample_rows)];
-        fill_missing_nulls(&mut columns, sample, total_rows);
+        let head = read_rows(&reader, limits.head_rows)?;
+        let sample = read_sample(&reader, limits.sample_rows)?;
+        fill_missing_nulls(&mut columns, &sample, total_rows);
+        add_profiles(&mut columns, &sample, total_rows);
 
         Ok(Summary::Table(TableSummary {
             format: TableFormat::Parquet {
                 row_groups: metadata.num_row_groups(),
             },
             rows: RowCount::Exact(total_rows),
+            insights: insights(&columns),
             columns,
-            head: rows.iter().take(limits.head_rows).map(row_text).collect(),
+            head: head.iter().map(row_text).collect(),
+            sampled_rows: (basis_of(sample.len() as u64, total_rows) == Basis::Sample)
+                .then_some(sample.len() as u64),
         }))
     }
 }
@@ -81,6 +81,7 @@ fn columns_from_metadata(metadata: &ParquetMetaData, total_rows: u64) -> Vec<Col
                 column_type: ColumnType::Nested,
                 nulls: None,
                 bounds: None,
+                profile: None,
             },
         })
         .collect()
@@ -99,6 +100,7 @@ fn primitive_column(metadata: &ParquetMetaData, leaf: usize, total_rows: u64) ->
         bounds: statistics
             .as_deref()
             .and_then(|stats| bounds(stats, column_type, &descriptor)),
+        profile: None,
     }
 }
 
@@ -283,14 +285,52 @@ fn read_rows(reader: &SerializedFileReader<File>, count: usize) -> Result<Vec<Ro
     Ok(rows)
 }
 
-/// Counts nulls in the rows read for columns whose metadata had no null count.
-fn fill_missing_nulls(columns: &mut [ColumnSummary], rows: &[Row], total_rows: u64) {
-    let sampled = rows.len() as u64;
-    let basis = if sampled == total_rows {
+/// Up to `count` rows taken from row groups spread over the file, the same number from
+/// each, so the sample is not only the start of the file.
+fn read_sample(reader: &SerializedFileReader<File>, count: usize) -> Result<Vec<Row>, ReadError> {
+    let groups = reader.num_row_groups();
+    let used = groups.min(count);
+    if used == 0 {
+        return Ok(Vec::new());
+    }
+    let per_group = count.div_ceil(used);
+    let mut rows = Vec::new();
+    for index in (0..used).map(|i| i * groups / used) {
+        let group = reader.get_row_group(index)?;
+        for row in group.get_row_iter(None)?.take(per_group) {
+            rows.push(row?);
+        }
+    }
+    rows.truncate(count);
+    Ok(rows)
+}
+
+fn add_profiles(columns: &mut [ColumnSummary], rows: &[Row], total_rows: u64) {
+    let basis = basis_of(rows.len() as u64, total_rows);
+    let texts: Vec<Vec<Option<String>>> = rows.iter().map(row_text).collect();
+    for (index, column) in columns.iter_mut().enumerate() {
+        let values: Vec<&str> = texts
+            .iter()
+            .filter_map(|row| row.get(index)?.as_deref())
+            .collect();
+        column.profile = Some(profile(&values, column.column_type, basis, &|value| {
+            value.parse().ok()
+        }));
+    }
+}
+
+fn basis_of(sampled: u64, total_rows: u64) -> Basis {
+    if sampled == total_rows {
         Basis::WholeFile
     } else {
         Basis::Sample
-    };
+    }
+}
+
+/// Counts nulls in the rows read for columns whose metadata had no null count.
+fn fill_missing_nulls(columns: &mut [ColumnSummary], rows: &[Row], total_rows: u64) {
+    let sampled = rows.len() as u64;
+    let basis = basis_of(sampled, total_rows);
     for (index, column) in columns.iter_mut().enumerate() {
         if column.nulls.is_some() {
             continue;

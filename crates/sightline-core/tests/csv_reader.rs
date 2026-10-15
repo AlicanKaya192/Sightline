@@ -4,8 +4,8 @@ use std::path::Path;
 
 use common::{table, write_bytes};
 use sightline_core::{
-    Basis, ColumnType, CsvReader, Limits, NullCount, Reader, RowCount, TableFormat, TableSummary,
-    TextEncoding,
+    Basis, ColumnType, CsvReader, InsightKind, Limits, NullCount, Reader, RowCount, Shape,
+    TableFormat, TableSummary, TextEncoding,
 };
 
 fn summarize_bytes(name: &str, content: &[u8], limits: &Limits) -> TableSummary {
@@ -282,4 +282,58 @@ fn a_sample_gives_no_bounds() {
     let summary = summarize_bytes("sample_bounds.csv", content.as_bytes(), &limits);
 
     assert_eq!(summary.columns[0].bounds, None);
+}
+
+#[test]
+fn columns_get_a_profile_read_with_the_decimal_comma() {
+    let summary = summarize("csv_profile.csv", "id;fiyat\n1;2,5\n2;3,75\n2;\n");
+
+    let id = summary.columns[0].profile.as_ref().expect("id profile");
+    assert_eq!((id.values, id.distinct), (3, 2));
+    let price = summary.columns[1].profile.as_ref().expect("price profile");
+    assert!(
+        matches!(&price.shape, Shape::Histogram(bins) if bins.iter().sum::<u64>() == 2),
+        "{price:?}"
+    );
+}
+
+#[test]
+fn a_profile_from_a_sample_says_so() {
+    let content = format!("n\n{}", "1\n".repeat(10));
+    let limits = Limits {
+        sample_rows: 3,
+        ..Limits::default()
+    };
+
+    let summary = summarize_bytes("sample_profile.csv", content.as_bytes(), &limits);
+
+    let profile = summary.columns[0].profile.as_ref().expect("profile");
+    assert_eq!((profile.values, profile.basis), (3, Basis::Sample));
+}
+
+#[test]
+fn the_summary_carries_the_insights_of_its_columns() {
+    let ids: String = (1..=20).map(|n| format!("{n}\n")).collect();
+
+    let summary = summarize("csv_insights.csv", &format!("id\n{ids}"));
+
+    assert_eq!(
+        summary.insights.iter().map(|i| &i.kind).collect::<Vec<_>>(),
+        [&InsightKind::LooksLikeId]
+    );
+}
+
+#[test]
+fn a_sample_reports_how_many_rows_it_used() {
+    let content = format!("n\n{}", "1\n".repeat(10));
+    let limits = Limits {
+        sample_rows: 3,
+        ..Limits::default()
+    };
+
+    let sampled = summarize_bytes("sampled_rows.csv", content.as_bytes(), &limits);
+    let whole = summarize("whole_rows.csv", "n\n1\n2\n");
+
+    assert_eq!(sampled.sampled_rows, Some(3));
+    assert_eq!(whole.sampled_rows, None);
 }

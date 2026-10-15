@@ -14,6 +14,9 @@ pub struct TableSummary {
     pub columns: Vec<ColumnSummary>,
     /// First rows as text, one entry per column; `None` is a missing value.
     pub head: Vec<Vec<Option<String>>>,
+    pub insights: Vec<Insight>,
+    /// Rows behind the sample-based numbers, when the sample is not the whole file.
+    pub sampled_rows: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,6 +49,7 @@ pub struct ColumnSummary {
     pub column_type: ColumnType,
     pub nulls: Option<NullCount>,
     pub bounds: Option<Bounds>,
+    pub profile: Option<ColumnProfile>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -91,4 +95,44 @@ pub enum Basis {
 pub struct Bounds {
     pub min: String,
     pub max: String,
+}
+
+/// What the non-empty values of one column look like.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ColumnProfile {
+    /// Non-empty values the profile was computed from.
+    pub values: u64,
+    pub distinct: u64,
+    pub basis: Basis,
+    pub shape: Shape,
+    /// Fisher-Pearson skewness of numeric columns with a spread.
+    pub skewness: Option<f64>,
+    /// The value, when every value is the same.
+    pub single_value: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Shape {
+    None,
+    /// Counts of equal-width bins from the smallest to the largest value.
+    Histogram(Vec<u64>),
+    /// Most frequent values with their counts, most frequent first.
+    TopValues(Vec<(String, u64)>),
+}
+
+/// Something worth knowing about a column before using it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Insight {
+    pub column: String,
+    pub kind: InsightKind,
+    pub basis: Basis,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum InsightKind {
+    HighNulls { ratio: f64 },
+    LooksLikeId,
+    SingleValue { value: String },
+    Skewed { skewness: f64 },
+    DateRange { from: String, to: String },
 }

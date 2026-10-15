@@ -201,3 +201,72 @@ fn rejects_a_file_that_is_not_parquet() {
 
     assert!(matches!(result, Err(ReadError::Parquet(_))), "{result:?}");
 }
+
+fn same_value_per_row_group(name: &str) -> PathBuf {
+    let row_groups: Vec<Vec<Values>> = (1..=3)
+        .map(|n| vec![Values::Int64(vec![Some(n); 5])])
+        .collect();
+    let schema = "message t { optional int64 n; }";
+    write_parquet(
+        name,
+        schema,
+        &row_groups,
+        WriterProperties::builder().build(),
+    )
+}
+
+#[test]
+fn sample_is_spread_over_all_row_groups() {
+    let path = same_value_per_row_group("spread.parquet");
+    let limits = Limits {
+        sample_rows: 3,
+        ..Limits::default()
+    };
+
+    let summary = summarize(&path, &limits);
+
+    let profile = summary.columns[0].profile.as_ref().expect("profile");
+    assert_eq!((profile.values, profile.distinct), (3, 3));
+    assert_eq!(profile.basis, Basis::Sample);
+}
+
+#[test]
+fn first_rows_stay_the_first_rows_of_the_file() {
+    let path = same_value_per_row_group("spread_head.parquet");
+    let limits = Limits {
+        head_rows: 4,
+        sample_rows: 3,
+        ..Limits::default()
+    };
+
+    let summary = summarize(&path, &limits);
+
+    assert_eq!(summary.head, vec![vec![Some("1".to_string())]; 4]);
+}
+
+#[test]
+fn every_column_gets_a_profile_of_its_values() {
+    let path = write_people("people_profile.parquet", EnabledStatistics::Chunk);
+
+    let summary = summarize(&path, &Limits::default());
+
+    let id = summary.columns[0].profile.as_ref().expect("id profile");
+    assert_eq!((id.values, id.distinct, id.basis), (5, 5, Basis::WholeFile));
+    let name = summary.columns[1].profile.as_ref().expect("name profile");
+    assert_eq!(name.values, 4);
+}
+
+#[test]
+fn a_sample_reports_how_many_rows_it_used() {
+    let path = same_value_per_row_group("sampled_rows.parquet");
+    let limits = Limits {
+        sample_rows: 3,
+        ..Limits::default()
+    };
+
+    let sampled = summarize(&path, &limits);
+    let whole = summarize(&path, &Limits::default());
+
+    assert_eq!(sampled.sampled_rows, Some(3));
+    assert_eq!(whole.sampled_rows, None);
+}

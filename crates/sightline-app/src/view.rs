@@ -5,12 +5,13 @@ use std::error::Error;
 use std::io;
 
 use sightline_core::{
-    Basis, ColumnSummary, ColumnType, NullCount, ReadError, RowCount, TableFormat, TableSummary,
-    TextEncoding,
+    Basis, ColumnProfile, ColumnSummary, ColumnType, Insight, InsightKind, NullCount, ReadError,
+    RowCount, Shape, TableFormat, TableSummary, TextEncoding,
 };
 
 use crate::{
-    Cell, ColumnKind, FailureInfo, FailureKind, FileFormat, FileInfo, NullsBasis, SchemaRow,
+    Cell, ColumnKind, FailureInfo, FailureKind, FileFormat, FileInfo, SchemaRow, WarningKind,
+    WarningRow,
 };
 
 const KILOBYTE: u64 = 1024;
@@ -88,6 +89,7 @@ pub fn file_info(
         columns: to_int(summary.columns.len()),
         ..FileInfo::default()
     };
+    set_sampled(&mut info, summary.sampled_rows, format);
     match summary.format {
         TableFormat::Parquet { row_groups } => {
             info.format = FileFormat::Parquet;
@@ -110,6 +112,25 @@ pub fn schema_rows(columns: &[ColumnSummary], format: &NumberFormat) -> Vec<Sche
     columns
         .iter()
         .map(|column| schema_row(column, format))
+        .collect()
+}
+
+/// Bar heights from 0 to 1, relative to each column's tallest bin; empty without a histogram.
+pub fn histograms(columns: &[ColumnSummary]) -> Vec<Vec<f32>> {
+    columns
+        .iter()
+        .map(|column| match column.profile.as_ref().map(|p| &p.shape) {
+            Some(Shape::Histogram(bins)) => relative_heights(bins),
+            _ => Vec::new(),
+        })
+        .collect()
+}
+
+/// One line per insight; the window writes the sentence around the values.
+pub fn warning_rows(insights: &[Insight], format: &NumberFormat) -> Vec<WarningRow> {
+    insights
+        .iter()
+        .map(|insight| warning_row(insight, format))
         .collect()
 }
 
@@ -169,6 +190,9 @@ fn schema_row(column: &ColumnSummary, format: &NumberFormat) -> SchemaRow {
         row.min = bounds.min.as_str().into();
         row.max = bounds.max.as_str().into();
     }
+    if let Some(profile) = &column.profile {
+        set_profile(&mut row, profile, format);
+    }
     row
 }
 
@@ -176,12 +200,61 @@ fn set_nulls(row: &mut SchemaRow, nulls: NullCount, format: &NumberFormat) {
     row.nulls_known = true;
     row.nulls_ratio = nulls.ratio() as f32;
     row.nulls_percent = format.one_decimal(nulls.ratio() * 100.0).into();
-    row.nulls_basis = match nulls.basis {
-        Basis::WholeFile => NullsBasis::WholeFile,
-        Basis::Sample => NullsBasis::Sample,
+}
+
+fn set_profile(row: &mut SchemaRow, profile: &ColumnProfile, format: &NumberFormat) {
+    row.distinct_known = true;
+    row.distinct = format.count(profile.distinct).into();
+    match &profile.shape {
+        Shape::Histogram(_) => row.has_histogram = true,
+        Shape::TopValues(top) => {
+            // A value seen once says nothing about the column.
+            if let Some((value, count)) = top.first().filter(|(_, count)| *count > 1) {
+                let share = *count as f64 / profile.values.max(1) as f64 * 100.0;
+                row.top_value = value.as_str().into();
+                row.top_share = format.one_decimal(share).into();
+            }
+        }
+        Shape::None => {}
+    }
+}
+
+fn set_sampled(info: &mut FileInfo, sampled_rows: Option<u64>, format: &NumberFormat) {
+    if let Some(rows) = sampled_rows {
+        info.sampled = true;
+        info.sampled_rows = format.count(rows).into();
+    }
+}
+
+fn relative_heights(bins: &[u64]) -> Vec<f32> {
+    let tallest = bins.iter().copied().max().unwrap_or(0).max(1) as f32;
+    bins.iter().map(|&count| count as f32 / tallest).collect()
+}
+
+fn warning_row(insight: &Insight, format: &NumberFormat) -> WarningRow {
+    let (kind, first, second) = match &insight.kind {
+        InsightKind::HighNulls { ratio } => (
+            WarningKind::HighNulls,
+            format.one_decimal(ratio * 100.0),
+            String::new(),
+        ),
+        InsightKind::LooksLikeId => (WarningKind::LooksLikeId, String::new(), String::new()),
+        InsightKind::SingleValue { value } => {
+            (WarningKind::SingleValue, value.clone(), String::new())
+        }
+        InsightKind::Skewed { skewness } => (
+            WarningKind::Skewed,
+            format.one_decimal(*skewness),
+            String::new(),
+        ),
+        InsightKind::DateRange { from, to } => (WarningKind::DateRange, from.clone(), to.clone()),
     };
-    if nulls.basis == Basis::Sample {
-        row.sample_rows = format.count(nulls.of_rows).into();
+    WarningRow {
+        kind,
+        column: insight.column.as_str().into(),
+        first: first.into(),
+        second: second.into(),
+        from_sample: insight.basis == Basis::Sample,
     }
 }
 
@@ -239,12 +312,12 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use sightline_core::{
-        Basis, Bounds, ColumnType, Limits, NullCount, RowCount, TableFormat, TextEncoding,
-        summarize,
+        Basis, Bounds, ColumnType, InsightKind, Limits, NullCount, RowCount, Shape, TableFormat,
+        TextEncoding, summarize,
     };
 
     use super::*;
-    use crate::{ColumnKind, FileFormat, NullsBasis};
+    use crate::{ColumnKind, FileFormat, WarningKind};
 
     const ENGLISH: NumberFormat = NumberFormat::ENGLISH;
     const TURKISH: NumberFormat = NumberFormat {
@@ -261,6 +334,8 @@ mod tests {
                 column("ad", ColumnType::Text),
             ],
             head: vec![],
+            insights: vec![],
+            sampled_rows: None,
         }
     }
 
@@ -270,6 +345,26 @@ mod tests {
             column_type,
             nulls: None,
             bounds: None,
+            profile: None,
+        }
+    }
+
+    fn profile(values: u64, distinct: u64, shape: Shape) -> Option<ColumnProfile> {
+        Some(ColumnProfile {
+            values,
+            distinct,
+            basis: Basis::WholeFile,
+            shape,
+            skewness: None,
+            single_value: None,
+        })
+    }
+
+    fn insight(kind: InsightKind, basis: Basis) -> Insight {
+        Insight {
+            column: "c".into(),
+            kind,
+            basis,
         }
     }
 
@@ -386,29 +481,140 @@ mod tests {
                 nulls_known: true,
                 nulls_ratio: 0.25,
                 nulls_percent: "25.0".into(),
-                nulls_basis: NullsBasis::WholeFile,
-                sample_rows: "".into(),
                 bounds_known: true,
                 min: "1".into(),
                 max: "9".into(),
+                ..SchemaRow::default()
             }]
         );
     }
 
     #[test]
-    fn schema_row_from_a_sample_keeps_the_sample_size() {
-        let mut name = column("ad", ColumnType::Text);
-        name.nulls = Some(NullCount {
-            count: 0,
-            of_rows: 10_000,
-            basis: Basis::Sample,
-        });
+    fn a_sampled_file_names_its_sample_size() {
+        let mut summary = table(
+            TableFormat::Parquet { row_groups: 1 },
+            RowCount::Exact(50_000),
+        );
+        summary.sampled_rows = Some(10_000);
 
-        let row = &schema_rows(&[name], &ENGLISH)[0];
+        let info = file_info("a.parquet", 10, &summary, &ENGLISH);
 
-        assert_eq!(row.nulls_basis, NullsBasis::Sample);
-        assert_eq!(row.sample_rows, "10,000");
-        assert_eq!(row.nulls_percent, "0.0");
+        assert!(info.sampled);
+        assert_eq!(info.sampled_rows, "10,000");
+    }
+
+    #[test]
+    fn a_whole_file_is_not_marked_as_sampled() {
+        let summary = table(TableFormat::Parquet { row_groups: 1 }, RowCount::Exact(5));
+
+        let info = file_info("a.parquet", 10, &summary, &ENGLISH);
+
+        assert!(!info.sampled);
+    }
+
+    #[test]
+    fn schema_row_shows_distinct_count_and_top_value() {
+        let mut city = column("city", ColumnType::Text);
+        city.profile = profile(
+            1000,
+            1200,
+            Shape::TopValues(vec![("Ankara".into(), 340), ("İzmir".into(), 10)]),
+        );
+
+        let row = &schema_rows(&[city], &ENGLISH)[0];
+
+        assert!(row.distinct_known);
+        assert_eq!(row.distinct, "1,200");
+        assert_eq!(
+            (row.top_value.as_str(), row.top_share.as_str()),
+            ("Ankara", "34.0")
+        );
+        assert!(!row.has_histogram);
+    }
+
+    #[test]
+    fn top_value_is_left_out_when_no_value_repeats() {
+        let mut note = column("note", ColumnType::Text);
+        note.profile = profile(3, 3, Shape::TopValues(vec![("a".into(), 1)]));
+
+        let row = &schema_rows(&[note], &ENGLISH)[0];
+
+        assert_eq!(row.top_value, "");
+    }
+
+    #[test]
+    fn schema_row_marks_a_histogram() {
+        let mut amount = column("amount", ColumnType::Float);
+        amount.profile = profile(3, 3, Shape::Histogram(vec![1, 2]));
+
+        let row = &schema_rows(&[amount], &ENGLISH)[0];
+
+        assert!(row.has_histogram);
+        assert_eq!(row.top_value, "");
+    }
+
+    #[test]
+    fn histogram_bars_are_relative_to_the_tallest_bin() {
+        let mut amount = column("amount", ColumnType::Float);
+        amount.profile = profile(7, 7, Shape::Histogram(vec![1, 2, 4, 0]));
+        let mut name = column("name", ColumnType::Text);
+        name.profile = profile(1, 1, Shape::TopValues(vec![("a".into(), 1)]));
+
+        let bars = histograms(&[amount, name, column("x", ColumnType::Text)]);
+
+        assert_eq!(bars, [vec![0.25, 0.5, 1.0, 0.0], vec![], vec![]]);
+    }
+
+    #[test]
+    fn warning_rows_carry_formatted_values() {
+        let found = [
+            insight(InsightKind::HighNulls { ratio: 0.25 }, Basis::WholeFile),
+            insight(InsightKind::Skewed { skewness: -2.54 }, Basis::WholeFile),
+            insight(
+                InsightKind::DateRange {
+                    from: "2026-09-01".into(),
+                    to: "2026-09-12".into(),
+                },
+                Basis::WholeFile,
+            ),
+        ];
+
+        let rows = warning_rows(&found, &TURKISH);
+
+        let summary: Vec<(WarningKind, &str, &str)> = rows
+            .iter()
+            .map(|r| (r.kind, r.first.as_str(), r.second.as_str()))
+            .collect();
+        assert_eq!(
+            summary,
+            [
+                (WarningKind::HighNulls, "25,0", ""),
+                (WarningKind::Skewed, "-2,5", ""),
+                (WarningKind::DateRange, "2026-09-01", "2026-09-12"),
+            ]
+        );
+        assert_eq!(rows[0].column, "c");
+    }
+
+    #[test]
+    fn warning_rows_name_single_values_and_sampled_findings() {
+        let found = [
+            insight(
+                InsightKind::SingleValue { value: "TR".into() },
+                Basis::WholeFile,
+            ),
+            insight(InsightKind::LooksLikeId, Basis::Sample),
+        ];
+
+        let rows = warning_rows(&found, &ENGLISH);
+
+        assert_eq!(
+            (rows[0].kind, rows[0].first.as_str()),
+            (WarningKind::SingleValue, "TR")
+        );
+        assert!(!rows[0].from_sample);
+        assert_eq!(rows[1].kind, WarningKind::LooksLikeId);
+        assert!(rows[1].from_sample);
     }
 
     #[test]

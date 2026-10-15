@@ -72,10 +72,6 @@ msgctxt "NullsCell"
 msgid "{}%"
 msgstr "%{}"
 
-msgctxt "NullsCell"
-msgid "sample: {}"
-msgstr "örneklem: {}"
-
 msgctxt "SchemaTable"
 msgid "Column"
 msgstr "Sütun"
@@ -152,10 +148,6 @@ msgctxt "PreviewView"
 msgid "Warnings"
 msgstr "Uyarılar"
 
-msgctxt "PreviewView"
-msgid "Warnings arrive in a later version."
-msgstr "Uyarılar sonraki bir sürümde gelecek."
-
 msgctxt "AppWindow"
 msgid "Preview with Sightline"
 msgstr "Sightline ile önizle"
@@ -167,3 +159,59 @@ msgstr ","
 msgctxt "thousands separator"
 msgid ","
 msgstr "."
+
+msgctxt "FileHeader"
+msgid "sample: {} rows"
+msgstr "örneklem: {} satır"
+
+msgctxt "DistributionCell"
+msgid "{}%"
+msgstr "%{}"
+
+msgctxt "SchemaTable"
+msgid "Distinct"
+msgstr "Benzersiz"
+
+msgctxt "SchemaTable"
+msgid "Distribution"
+msgstr "Dağılım"
+
+msgctxt "WarningList"
+msgid "No warnings for this file."
+msgstr "Bu dosya için uyarı yok."
+
+msgctxt "WarningList"
+msgid "caution"
+msgstr "dikkat"
+
+msgctxt "WarningList"
+msgid "note"
+msgstr "bilgi"
+
+msgctxt "WarningList"
+msgid "sample"
+msgstr "örneklem"
+
+msgctxt "WarningList"
+msgid "{0}: {1}% of the values are missing. Does an empty value mean something here, or is data missing?"
+msgstr "{0}: değerlerin %{1} kadarı boş. Boş değer burada bir anlam taşıyor mu, yoksa veri mi eksik?"
+
+msgctxt "WarningList"
+msgid "{0}: every value is different. It is probably an ID column; do not use it as a model feature."
+msgstr "{0}: her değer farklı. Büyük ihtimalle bir kimlik sütunu; modele özellik olarak girmemeli."
+
+msgctxt "WarningList"
+msgid "{0}: every value is \"{1}\". The column carries no information."
+msgstr "{0}: bütün değerler \"{1}\". Sütun bilgi taşımıyor."
+
+msgctxt "WarningList"
+msgid "{0}: the distribution is strongly skewed (skewness {1})."
+msgstr "{0}: dağılım çok çarpık (çarpıklık {1})."
+
+msgctxt "WarningList"
+msgid "{0}: dates run from {1} to {2}."
+msgstr "{0}: tarihler {1} ile {2} arasında."
+
+msgctxt "PreviewView"
+msgid "Warnings ({})"
+msgstr "Uyarılar ({})"

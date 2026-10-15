@@ -167,15 +167,19 @@ mod tests {
                         min: "1".into(),
                         max: "9".into(),
                     }),
+                    profile: None,
                 },
                 ColumnSummary {
                     name: "şehir".into(),
                     column_type: ColumnType::Text,
                     nulls: None,
                     bounds: None,
+                    profile: None,
                 },
             ],
             head: vec![vec![Some("1".into()), None]],
+            insights: vec![],
+            sampled_rows: None,
         }
     }
 

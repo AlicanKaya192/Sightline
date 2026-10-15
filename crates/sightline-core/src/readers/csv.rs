@@ -8,6 +8,8 @@ use std::path::Path;
 use encoding_rs::WINDOWS_1254;
 
 use super::{Limits, ReadError, Reader, has_extension};
+use crate::insights::insights;
+use crate::profile::profile;
 use crate::summary::{
     Basis, Bounds, ColumnSummary, ColumnType, NullCount, RowCount, Summary, TableFormat,
     TableSummary, TextEncoding,
@@ -44,14 +46,17 @@ impl Reader for CsvReader {
             Basis::Sample
         };
 
+        let columns = summarize_columns(&table.header, sample, delimiter, basis);
         Ok(Summary::Table(TableSummary {
             format: TableFormat::Csv {
                 delimiter,
                 encoding,
             },
             rows: row_count(table.rows.len(), is_complete),
-            columns: summarize_columns(&table.header, sample, delimiter, basis),
+            insights: insights(&columns),
+            columns,
             head: table.rows.iter().take(limits.head_rows).cloned().collect(),
+            sampled_rows: (basis == Basis::Sample).then_some(sample.len() as u64),
         }))
     }
 }
@@ -207,6 +212,9 @@ fn summarize_columns(
                 } else {
                     None
                 },
+                profile: Some(profile(&values, column_type, basis, &|value| {
+                    parse_float(value, decimal_comma)
+                })),
             }
         })
         .collect()

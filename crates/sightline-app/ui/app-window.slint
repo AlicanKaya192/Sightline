@@ -6,8 +6,6 @@ export enum FileFormat { parquet, csv }
 
 export enum ColumnKind { boolean, integer, float, decimal, date, time, date-time, text, binary, nested }
 
-export enum NullsBasis { whole-file, sample }
-
 export enum FailureKind { not-found, permission-denied, unsupported-format, unreadable-content, other }
 
 export struct FileInfo {
@@ -20,6 +18,8 @@ export struct FileInfo {
     rows: string,
     rows-exact: bool,
     columns: int,
+    sampled: bool,
+    sampled-rows: string,
 }
 
 export struct SchemaRow {
@@ -28,11 +28,24 @@ export struct SchemaRow {
     nulls-known: bool,
     nulls-ratio: float,
     nulls-percent: string,
-    nulls-basis: NullsBasis,
-    sample-rows: string,
     bounds-known: bool,
     min: string,
     max: string,
+    distinct-known: bool,
+    distinct: string,
+    has-histogram: bool,
+    top-value: string,
+    top-share: string,
+}
+
+export enum WarningKind { high-nulls, looks-like-id, single-value, skewed, date-range }
+
+export struct WarningRow {
+    kind: WarningKind,
+    column: string,
+    first: string,
+    second: string,
+    from-sample: bool,
 }
 
 export struct Cell {
@@ -60,6 +73,11 @@ global Theme {
     // Accent text on accent-soft; the light accent is below 4.5:1 there.
     out property <color> accent-text: dark ? #E39A48 : #944C0A;
     out property <color> warn: dark ? #E2B252 : #9A6410;
+    out property <color> warn-soft: dark ? #352914 : #F6EBD3;
+    // Warn text on warn-soft; the light warn is below 4.5:1 there.
+    out property <color> warn-text: dark ? #E2B252 : #85560D;
+    out property <color> info: dark ? #80B1EC : #245C9E;
+    out property <color> info-soft: dark ? #172A40 : #DCE7F4;
     out property <color> bad: dark ? #F07A82 : #AE2730;
     out property <color> bad-soft: dark ? #3A1A1D : #F7DEDF;
     out property <string> mono-font: "Consolas";
@@ -327,6 +345,13 @@ component FileHeader inherits Rectangle {
             if root.info.format == FileFormat.csv: Fact {
                 value: root.info.encoding;
             }
+            if root.info.sampled: VerticalLayout {
+                alignment: center;
+
+                SampleChip {
+                    text: @tr("sample: {} rows", root.info.sampled-rows);
+                }
+            }
         }
     }
 }
@@ -457,20 +482,65 @@ component NullsCell inherits HorizontalLayout {
             }
         }
     }
-    if root.summary.nulls-known && root.summary.nulls-basis == NullsBasis.sample: VerticalLayout {
-        alignment: center;
+}
 
-        SampleChip {
-            text: @tr("sample: {}", root.summary.sample-rows);
+// A small bar chart for numbers and dates, or the most frequent value for text.
+component DistributionCell inherits Rectangle {
+    in property <SchemaRow> summary;
+    in property <[float]> bars;
+    property <length> bar-width: 7px;
+    property <length> bar-gap: 2px;
+
+    if root.summary.has-histogram: Rectangle {
+        x: 0;
+        y: (parent.height - self.height) / 2;
+        width: root.bars.length * (root.bar-width + root.bar-gap);
+        height: 20px;
+
+        for ratio[index] in root.bars: Rectangle {
+            x: index * (root.bar-width + root.bar-gap);
+            y: parent.height - self.height;
+            width: root.bar-width;
+            height: ratio > 0 ? Math.max(2px, parent.height * ratio) : 0px;
+            border-radius: 1px;
+            background: Theme.accent;
         }
+    }
+    if !root.summary.has-histogram && root.summary.top-value != "": HorizontalLayout {
+        spacing: 6px;
+
+        Text {
+            text: root.summary.top-value;
+            color: Theme.text;
+            font-family: Theme.mono-font;
+            horizontal-stretch: 1;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        Text {
+            text: @tr("{}%", root.summary.top-share);
+            color: Theme.text-muted;
+            vertical-alignment: center;
+        }
+    }
+    if !root.summary.has-histogram && root.summary.top-value == "": Text {
+        x: 0;
+        height: parent.height;
+        text: "—";
+        color: Theme.text-muted;
+        vertical-alignment: center;
     }
 }
 
 component SchemaTable inherits ScrollView {
     in property <[SchemaRow]> rows;
-    property <length> type-width: 120px;
-    property <length> nulls-width: 250px;
-    property <length> bound-width: 150px;
+    in property <[[float]]> histograms;
+    property <length> type-width: 110px;
+    property <length> nulls-width: 140px;
+    property <length> distinct-width: 90px;
+    property <length> distribution-width: 120px;
+    property <length> bound-width: 120px;
 
     VerticalLayout {
         alignment: start;
@@ -502,6 +572,17 @@ component SchemaTable inherits ScrollView {
                 }
 
                 HeaderCell {
+                    text: @tr("Distinct");
+                    width: root.distinct-width;
+                    horizontal-alignment: right;
+                }
+
+                HeaderCell {
+                    text: @tr("Distribution");
+                    width: root.distribution-width;
+                }
+
+                HeaderCell {
                     text: @tr("Min");
                     width: root.bound-width;
                 }
@@ -513,7 +594,7 @@ component SchemaTable inherits ScrollView {
             }
         }
 
-        for row in root.rows: Rectangle {
+        for row[index] in root.rows: Rectangle {
             height: 34px;
 
             HorizontalLayout {
@@ -542,6 +623,21 @@ component SchemaTable inherits ScrollView {
                 NullsCell {
                     summary: row;
                     width: root.nulls-width;
+                }
+
+                Text {
+                    text: row.distinct-known ? row.distinct : "—";
+                    color: row.distinct-known ? Theme.text : Theme.text-muted;
+                    font-family: Theme.mono-font;
+                    width: root.distinct-width;
+                    horizontal-alignment: right;
+                    vertical-alignment: center;
+                }
+
+                DistributionCell {
+                    summary: row;
+                    bars: root.histograms[index];
+                    width: root.distribution-width;
                 }
 
                 Text {
@@ -605,6 +701,92 @@ component SchemaTable inherits ScrollView {
     }
 }
 
+// "Caution" or "note" in words as well as color, so the meaning does not rely on color.
+component Pill inherits Rectangle {
+    in property <string> text;
+    in property <bool> caution;
+    background: root.caution ? Theme.warn-soft : Theme.info-soft;
+    border-radius: 9px;
+
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        padding-top: 2px;
+        padding-bottom: 2px;
+
+        Text {
+            text: root.text;
+            color: root.caution ? Theme.warn-text : Theme.info;
+            font-size: 12px;
+            font-weight: 600;
+        }
+    }
+}
+
+component WarningList inherits ScrollView {
+    in property <[WarningRow]> warnings;
+
+    VerticalLayout {
+        alignment: start;
+        padding: 20px;
+        spacing: 14px;
+
+        if root.warnings.length == 0: Text {
+            text: @tr("No warnings for this file.");
+            color: Theme.text-muted;
+        }
+
+        for warning in root.warnings: HorizontalLayout {
+            spacing: 10px;
+
+            VerticalLayout {
+                alignment: start;
+                width: 64px;
+
+                Pill {
+                    text: root.is-caution(warning.kind) ? @tr("caution") : @tr("note");
+                    caution: root.is-caution(warning.kind);
+                }
+            }
+
+            Text {
+                text: root.message(warning);
+                color: Theme.text;
+                horizontal-stretch: 1;
+                wrap: word-wrap;
+            }
+
+            if warning.from-sample: VerticalLayout {
+                alignment: start;
+
+                SampleChip {
+                    text: @tr("sample");
+                }
+            }
+        }
+    }
+
+    pure function is-caution(kind: WarningKind) -> bool {
+        return kind == WarningKind.high-nulls || kind == WarningKind.single-value;
+    }
+
+    pure function message(warning: WarningRow) -> string {
+        if warning.kind == WarningKind.high-nulls {
+            return @tr("{0}: {1}% of the values are missing. Does an empty value mean something here, or is data missing?", warning.column, warning.first);
+        }
+        if warning.kind == WarningKind.looks-like-id {
+            return @tr("{0}: every value is different. It is probably an ID column; do not use it as a model feature.", warning.column);
+        }
+        if warning.kind == WarningKind.single-value {
+            return @tr("{0}: every value is \"{1}\". The column carries no information.", warning.column, warning.first);
+        }
+        if warning.kind == WarningKind.skewed {
+            return @tr("{0}: the distribution is strongly skewed (skewness {1}).", warning.column, warning.first);
+        }
+        return @tr("{0}: dates run from {1} to {2}.", warning.column, warning.first, warning.second);
+    }
+}
+
 component HeadTable inherits ScrollView {
     in property <[string]> titles;
     in property <[[Cell]]> rows;
@@ -661,6 +843,8 @@ component PreviewView inherits VerticalLayout {
     in property <[SchemaRow]> schema;
     in property <[string]> head-titles;
     in property <[[Cell]]> head-rows;
+    in property <[[float]]> histograms;
+    in property <[WarningRow]> warnings;
     property <int> current-tab: 0;
 
     FileHeader {
@@ -668,7 +852,11 @@ component PreviewView inherits VerticalLayout {
     }
 
     TabBar {
-        titles: [@tr("Schema"), @tr("First rows"), @tr("Warnings")];
+        titles: [
+            @tr("Schema"),
+            @tr("First rows"),
+            root.warnings.length > 0 ? @tr("Warnings ({})", root.warnings.length) : @tr("Warnings"),
+        ];
         current <=> root.current-tab;
     }
 
@@ -678,16 +866,14 @@ component PreviewView inherits VerticalLayout {
 
         if root.current-tab == 0: SchemaTable {
             rows: root.schema;
+            histograms: root.histograms;
         }
         if root.current-tab == 1: HeadTable {
             titles: root.head-titles;
             rows: root.head-rows;
         }
-        if root.current-tab == 2: Text {
-            text: @tr("Warnings arrive in a later version.");
-            color: Theme.text-muted;
-            horizontal-alignment: center;
-            vertical-alignment: center;
+        if root.current-tab == 2: WarningList {
+            warnings: root.warnings;
         }
     }
 }
@@ -700,6 +886,8 @@ export component AppWindow inherits Window {
     in property <[SchemaRow]> schema;
     in property <[string]> head-titles;
     in property <[[Cell]]> head-rows;
+    in property <[[float]]> histograms;
+    in property <[WarningRow]> warnings;
     in property <FailureInfo> failure;
     // Read when the shell menu is registered, so the menu uses the app's translation.
     out property <string> menu-verb: @tr("Preview with Sightline");
@@ -711,7 +899,7 @@ export component AppWindow inherits Window {
     background: Theme.background;
     default-font-family: "Segoe UI";
     default-font-size: 14px;
-    preferred-width: 960px;
+    preferred-width: 1040px;
     preferred-height: 600px;
     min-width: 560px;
     min-height: 360px;
@@ -731,6 +919,8 @@ export component AppWindow inherits Window {
             schema: root.schema;
             head-titles: root.head-titles;
             head-rows: root.head-rows;
+            histograms: root.histograms;
+            warnings: root.warnings;
         }
     }
 
