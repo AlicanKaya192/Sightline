@@ -2,7 +2,9 @@
 //! Rows are decoded only for the head and for columns without null counts.
 
 use std::fs::File;
+use std::num::NonZeroUsize;
 use std::path::Path;
+use std::thread;
 
 use ::parquet::basic::{ConvertedType, LogicalType, Type as PhysicalType};
 use ::parquet::errors::ParquetError;
@@ -34,7 +36,7 @@ impl Reader for ParquetReader {
         let mut columns = columns_from_metadata(metadata, total_rows);
 
         let head = read_rows(&reader, limits.head_rows)?;
-        let sample = read_sample(&reader, limits.sample_rows)?;
+        let sample = read_sample(path, metadata.num_row_groups(), limits.sample_rows)?;
         fill_missing_nulls(&mut columns, &sample, total_rows);
         add_profiles(&mut columns, &sample, total_rows);
 
@@ -285,23 +287,68 @@ fn read_rows(reader: &SerializedFileReader<File>, count: usize) -> Result<Vec<Ro
     Ok(rows)
 }
 
+/// The rows read from one row group, with the group's place in the sample.
+type SampledGroup = (usize, Vec<Row>);
+
 /// Up to `count` rows taken from row groups spread over the file, the same number from
 /// each, so the sample is not only the start of the file.
-fn read_sample(reader: &SerializedFileReader<File>, count: usize) -> Result<Vec<Row>, ReadError> {
-    let groups = reader.num_row_groups();
+///
+/// Opening a row group decompresses its first pages, which is most of the time spent, so
+/// the groups are read on several threads. Each thread opens the file itself: clones of
+/// one `File` share a cursor. Rows come back in row group order, as if read one by one.
+fn read_sample(path: &Path, groups: usize, count: usize) -> Result<Vec<Row>, ReadError> {
     let used = groups.min(count);
     if used == 0 {
         return Ok(Vec::new());
     }
     let per_group = count.div_ceil(used);
-    let mut rows = Vec::new();
-    for index in (0..used).map(|i| i * groups / used) {
-        let group = reader.get_row_group(index)?;
-        for row in group.get_row_iter(None)?.take(per_group) {
-            rows.push(row?);
+    let indices: Vec<usize> = (0..used).map(|i| i * groups / used).collect();
+    let workers = thread::available_parallelism()
+        .map_or(1, NonZeroUsize::get)
+        .min(used);
+    let mut slots: Vec<Vec<Row>> = (0..used).map(|_| Vec::new()).collect();
+    let indices = &indices;
+    let results: Vec<Result<Vec<SampledGroup>, ReadError>> = thread::scope(|scope| {
+        let handles: Vec<_> = (0..workers)
+            .map(|worker| {
+                scope.spawn(move || {
+                    let reader = SerializedFileReader::new(File::open(path)?)?;
+                    (worker..used)
+                        .step_by(workers)
+                        .map(|slot| Ok((slot, read_group(&reader, indices[slot], per_group)?)))
+                        .collect()
+                })
+            })
+            .collect();
+        handles
+            .into_iter()
+            .map(|handle| {
+                handle
+                    .join()
+                    .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+            })
+            .collect()
+    });
+    for result in results {
+        for (slot, rows) in result? {
+            slots[slot] = rows;
         }
     }
+    let mut rows: Vec<Row> = slots.into_iter().flatten().collect();
     rows.truncate(count);
+    Ok(rows)
+}
+
+fn read_group(
+    reader: &SerializedFileReader<File>,
+    index: usize,
+    count: usize,
+) -> Result<Vec<Row>, ReadError> {
+    let rows = reader
+        .get_row_group(index)?
+        .get_row_iter(None)?
+        .take(count)
+        .collect::<Result<_, _>>()?;
     Ok(rows)
 }
 
