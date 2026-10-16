@@ -1,6 +1,7 @@
 //! Parquet: schema, row count and statistics come from the footer metadata.
-//! Rows are decoded for the head and for a sample that the profiles use. Null counts
-//! missing from the metadata come from column pages spread over the whole file.
+//! Flat columns are sampled from column pages spread over the whole file, for the
+//! profiles and for null counts missing from the metadata. Whole rows are decoded only
+//! for the head and for nested columns.
 
 use std::fs::File;
 use std::num::NonZeroUsize;
@@ -16,14 +17,14 @@ use ::parquet::file::metadata::ParquetMetaData;
 use ::parquet::file::reader::{FileReader, SerializedFileReader};
 use ::parquet::file::statistics::{Statistics, ValueStatistics};
 use ::parquet::record::{Field, Row};
-use ::parquet::schema::types::{ColumnDescriptor, SchemaDescriptor};
+use ::parquet::schema::types::{ColumnDescPtr, ColumnDescriptor, SchemaDescriptor};
 
 use super::{Limits, ReadError, Reader, has_extension};
 use crate::insights::insights;
 use crate::profile::profile;
 use crate::summary::{
-    Basis, Bounds, ColumnSummary, ColumnType, NullCount, RowCount, Summary, TableFormat,
-    TableSummary,
+    Basis, Bounds, ColumnProfile, ColumnSummary, ColumnType, NullCount, RowCount, Summary,
+    TableFormat, TableSummary,
 };
 
 pub struct ParquetReader;
@@ -40,10 +41,16 @@ impl Reader for ParquetReader {
         let mut columns = columns_from_metadata(metadata, total_rows);
 
         let head = read_rows(&reader, limits.head_rows)?;
-        count_missing_nulls(path, metadata, &mut columns, limits.sample_rows as u64)?;
-        let sample = read_sample(path, metadata.num_row_groups(), limits.sample_rows)?;
-        fill_missing_nulls(&mut columns, &sample, total_rows);
-        add_profiles(&mut columns, &sample, total_rows);
+        let flat_sample = sample_flat_columns(path, metadata, &mut columns, limits.sample_rows)?;
+        let row_sample = if columns.iter().any(|column| column.profile.is_none()) {
+            let rows = read_sample(path, metadata.num_row_groups(), limits.sample_rows)?;
+            fill_missing_nulls(&mut columns, &rows, total_rows);
+            add_profiles(&mut columns, &rows, total_rows);
+            Some(rows.len() as u64)
+        } else {
+            None
+        };
+        let sampled = flat_sample.or(row_sample);
 
         Ok(Summary::Table(TableSummary {
             format: TableFormat::Parquet {
@@ -53,8 +60,7 @@ impl Reader for ParquetReader {
             insights: insights(&columns),
             columns,
             head: head.iter().map(row_text).collect(),
-            sampled_rows: (basis_of(sample.len() as u64, total_rows) == Basis::Sample)
-                .then_some(sample.len() as u64),
+            sampled_rows: sampled.filter(|&rows| basis_of(rows, total_rows) == Basis::Sample),
         }))
     }
 }
@@ -369,44 +375,70 @@ fn read_group(
     Ok(rows)
 }
 
-/// Windows that the null count reads. Many short windows find nulls that sit together,
-/// for example only in the last rows of a file.
-const NULL_SAMPLE_WINDOWS: u64 = 100;
+/// Windows that the sample of flat columns reads. Many short windows find values that sit
+/// together, for example nulls only in the last rows of a file.
+const SAMPLE_WINDOWS: u64 = 100;
 
-/// Counts nulls of flat columns whose metadata has no null count, in `count` rows read in
-/// windows from the first row of the file to the last. Pages between the windows are
-/// skipped without being decompressed.
-fn count_missing_nulls(
+/// What the sample windows hold for one flat column.
+#[derive(Default)]
+struct ColumnSample {
+    nulls: u64,
+    rows: u64,
+    /// Present values as text, as whole rows of the file would show them.
+    values: Vec<String>,
+}
+
+/// Reads `count` rows of every flat column in windows from the first row of the file to
+/// the last, and gives the columns their profiles and any null counts missing from the
+/// metadata. Pages between the windows are skipped without being decompressed. Returns
+/// the rows read per column, or `None` without flat columns.
+fn sample_flat_columns(
     path: &Path,
     metadata: &ParquetMetaData,
     columns: &mut [ColumnSummary],
-    count: u64,
-) -> Result<(), ReadError> {
+    count: usize,
+) -> Result<Option<u64>, ReadError> {
     let schema = metadata.file_metadata().schema_descr();
-    let missing: Vec<(usize, usize)> = top_level_leaves(schema)
+    let flat: Vec<(usize, usize)> = top_level_leaves(schema)
         .into_iter()
         .enumerate()
         .filter_map(|(index, leaf)| Some((index, leaf?)))
-        .filter(|&(index, leaf)| {
-            columns[index].nulls.is_none() && schema.column(leaf).max_rep_level() == 0
-        })
+        .filter(|&(_, leaf)| schema.column(leaf).max_rep_level() == 0)
         .collect();
-    if missing.is_empty() {
-        return Ok(());
+    if flat.is_empty() {
+        return Ok(None);
     }
     let total_rows = row_count(metadata)?;
-    let ranges = ranges_per_row_group(&sample_windows(total_rows, count), metadata);
-    let counts = in_parallel(path, missing.len(), |reader, job| {
-        nulls_in_ranges(reader, missing[job].1, &ranges)
+    let ranges = ranges_per_row_group(&sample_windows(total_rows, count as u64), metadata);
+    let jobs: Vec<(usize, usize)> = (0..flat.len())
+        .flat_map(|column| (0..ranges.len()).map(move |row_group| (column, row_group)))
+        .filter(|&(_, row_group)| !ranges[row_group].is_empty())
+        .collect();
+    let parts = in_parallel(path, jobs.len(), |reader, job| {
+        let (column, row_group) = jobs[job];
+        sample_column(reader, flat[column].1, row_group, &ranges[row_group])
     })?;
-    for (&(index, _), (nulls, rows)) in missing.iter().zip(counts) {
-        columns[index].nulls = Some(NullCount {
-            count: nulls,
-            of_rows: rows,
-            basis: basis_of(rows, total_rows),
-        });
+    let mut samples: Vec<ColumnSample> = flat.iter().map(|_| ColumnSample::default()).collect();
+    for (&(column, _), part) in jobs.iter().zip(parts) {
+        let sample = &mut samples[column];
+        sample.nulls += part.nulls;
+        sample.rows += part.rows;
+        sample.values.extend(part.values);
     }
-    Ok(())
+
+    let rows = samples[0].rows;
+    for (&(index, _), sample) in flat.iter().zip(samples) {
+        let basis = basis_of(sample.rows, total_rows);
+        let column = &mut columns[index];
+        column.nulls.get_or_insert(NullCount {
+            count: sample.nulls,
+            of_rows: sample.rows,
+            basis,
+        });
+        let values: Vec<&str> = sample.values.iter().map(String::as_str).collect();
+        column.profile = Some(profile_of(&values, column.column_type, basis));
+    }
+    Ok(Some(rows))
 }
 
 /// `count` rows of the file in evenly spread windows; the first window starts at the
@@ -415,7 +447,7 @@ fn sample_windows(total_rows: u64, count: u64) -> Vec<Range<u64>> {
     if count >= total_rows {
         return std::iter::once(0..total_rows).collect();
     }
-    let windows = NULL_SAMPLE_WINDOWS.min(count);
+    let windows = SAMPLE_WINDOWS.min(count);
     let gaps = total_rows - count;
     let mut rows_before = 0;
     (0..windows)
@@ -457,65 +489,67 @@ fn ranges_per_row_group(
         .collect()
 }
 
-/// Nulls and rows of one flat column in the given ranges of each row group.
-fn nulls_in_ranges(
+/// One flat column in the given row ranges of one row group.
+fn sample_column(
     reader: &SerializedFileReader<File>,
     leaf: usize,
-    ranges: &[Vec<Range<u64>>],
-) -> Result<(u64, u64), ReadError> {
+    row_group: usize,
+    ranges: &[Range<u64>],
+) -> Result<ColumnSample, ReadError> {
     let descriptor = reader
         .metadata()
         .file_metadata()
         .schema_descr()
         .column(leaf);
-    let max_definition = descriptor.max_def_level();
-    let (mut nulls, mut rows) = (0, 0);
-    for (row_group, group_ranges) in ranges.iter().enumerate() {
-        if group_ranges.is_empty() {
-            continue;
+    let pages = reader
+        .get_row_group(row_group)?
+        .get_column_page_reader(leaf)?;
+    let descriptor = &descriptor;
+    let sample = match get_column_reader(descriptor.clone(), pages) {
+        ColumnReader::BoolColumnReader(column) => sample_in(column, ranges, descriptor, |d, v| {
+            Ok(Field::convert_bool(d, v))
+        }),
+        ColumnReader::Int32ColumnReader(column) => sample_in(column, ranges, descriptor, |d, v| {
+            Ok(Field::convert_int32(d, v))
+        }),
+        ColumnReader::Int64ColumnReader(column) => sample_in(column, ranges, descriptor, |d, v| {
+            Ok(Field::convert_int64(d, v))
+        }),
+        ColumnReader::Int96ColumnReader(column) => sample_in(column, ranges, descriptor, |d, v| {
+            Ok(Field::convert_int96(d, v))
+        }),
+        ColumnReader::FloatColumnReader(column) => sample_in(column, ranges, descriptor, |d, v| {
+            Ok(Field::convert_float(d, v))
+        }),
+        ColumnReader::DoubleColumnReader(column) => {
+            sample_in(column, ranges, descriptor, |d, v| {
+                Ok(Field::convert_double(d, v))
+            })
         }
-        let pages = reader
-            .get_row_group(row_group)?
-            .get_column_page_reader(leaf)?;
-        let (group_nulls, group_rows) = match get_column_reader(descriptor.clone(), pages) {
-            ColumnReader::BoolColumnReader(column) => {
-                nulls_in(column, group_ranges, max_definition)
-            }
-            ColumnReader::Int32ColumnReader(column) => {
-                nulls_in(column, group_ranges, max_definition)
-            }
-            ColumnReader::Int64ColumnReader(column) => {
-                nulls_in(column, group_ranges, max_definition)
-            }
-            ColumnReader::Int96ColumnReader(column) => {
-                nulls_in(column, group_ranges, max_definition)
-            }
-            ColumnReader::FloatColumnReader(column) => {
-                nulls_in(column, group_ranges, max_definition)
-            }
-            ColumnReader::DoubleColumnReader(column) => {
-                nulls_in(column, group_ranges, max_definition)
-            }
-            ColumnReader::ByteArrayColumnReader(column) => {
-                nulls_in(column, group_ranges, max_definition)
-            }
-            ColumnReader::FixedLenByteArrayColumnReader(column) => {
-                nulls_in(column, group_ranges, max_definition)
-            }
-        }?;
-        nulls += group_nulls;
-        rows += group_rows;
-    }
-    Ok((nulls, rows))
+        ColumnReader::ByteArrayColumnReader(column) => {
+            sample_in(column, ranges, descriptor, Field::convert_byte_array)
+        }
+        ColumnReader::FixedLenByteArrayColumnReader(column) => {
+            sample_in(column, ranges, descriptor, |d, v| {
+                Field::convert_byte_array(d, v.into())
+            })
+        }
+    }?;
+    Ok(sample)
 }
 
-/// A value is null when its definition level is below the column's maximum.
-fn nulls_in<T: DataType>(
+/// Reads the ranges of one column chunk. A value is null when its definition level is
+/// below the column's maximum; present values are turned into the same `Field` that a
+/// whole row would hold, so their text does not depend on how they were read.
+fn sample_in<T: DataType>(
     mut column: ColumnReaderImpl<T>,
     ranges: &[Range<u64>],
-    max_definition: i16,
-) -> Result<(u64, u64), ParquetError> {
-    let (mut position, mut nulls, mut rows) = (0, 0, 0);
+    descriptor: &ColumnDescPtr,
+    to_field: impl Fn(&ColumnDescPtr, T::T) -> Result<Field, ParquetError>,
+) -> Result<ColumnSample, ParquetError> {
+    let max_definition = descriptor.max_def_level();
+    let mut sample = ColumnSample::default();
+    let mut position = 0;
     let (mut levels, mut values) = (Vec::new(), Vec::new());
     for range in ranges {
         column.skip_records((range.start - position) as usize)?;
@@ -527,28 +561,39 @@ fn nulls_in<T: DataType>(
             None,
             &mut values,
         )?;
-        nulls += levels
+        sample.nulls += levels
             .iter()
             .filter(|&&level| level < max_definition)
             .count() as u64;
-        rows += read as u64;
+        sample.rows += read as u64;
+        for value in values.drain(..) {
+            sample
+                .values
+                .extend(field_text(&to_field(descriptor, value)?));
+        }
         position = range.end;
     }
-    Ok((nulls, rows))
+    Ok(sample)
 }
 
+/// Profiles the columns that the flat sample did not cover, from whole rows.
 fn add_profiles(columns: &mut [ColumnSummary], rows: &[Row], total_rows: u64) {
     let basis = basis_of(rows.len() as u64, total_rows);
     let texts: Vec<Vec<Option<String>>> = rows.iter().map(row_text).collect();
     for (index, column) in columns.iter_mut().enumerate() {
+        if column.profile.is_some() {
+            continue;
+        }
         let values: Vec<&str> = texts
             .iter()
             .filter_map(|row| row.get(index)?.as_deref())
             .collect();
-        column.profile = Some(profile(&values, column.column_type, basis, &|value| {
-            value.parse().ok()
-        }));
+        column.profile = Some(profile_of(&values, column.column_type, basis));
     }
+}
+
+fn profile_of(values: &[&str], column_type: ColumnType, basis: Basis) -> ColumnProfile {
+    profile(values, column_type, basis, &|value| value.parse().ok())
 }
 
 fn basis_of(sampled: u64, total_rows: u64) -> Basis {

@@ -1,12 +1,17 @@
 mod common;
 
+use std::fs::File;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use common::{Values, table, write_bytes, write_parquet};
+use parquet::data_type::{Int32Type, Int64Type};
 use parquet::file::properties::{EnabledStatistics, WriterProperties};
+use parquet::file::writer::SerializedFileWriter;
+use parquet::schema::parser::parse_message_type;
 use sightline_core::{
     Basis, Bounds, ColumnType, Limits, NullCount, ParquetReader, ReadError, Reader, RowCount,
-    TableFormat, TableSummary,
+    Shape, TableFormat, TableSummary,
 };
 
 const SCHEMA: &str = "message people {
@@ -323,4 +328,111 @@ fn null_sample_covering_every_row_is_exact() {
             basis: Basis::WholeFile,
         })
     );
+}
+
+/// Two row groups of 10,000 rows with many small pages. Only the last 1,000 rows of the
+/// file hold 2 and "b"; the column `e` is always empty.
+fn values_at_the_end(name: &str) -> PathBuf {
+    let row_group = |late: bool| {
+        let late_row = |row: usize| late && row >= 9_000;
+        vec![
+            Values::Int64(
+                (0..10_000)
+                    .map(|row| Some(if late_row(row) { 2 } else { 1 }))
+                    .collect(),
+            ),
+            Values::Text(
+                (0..10_000)
+                    .map(|row| Some(if late_row(row) { "b" } else { "a" }))
+                    .collect(),
+            ),
+            Values::Double(vec![None; 10_000]),
+        ]
+    };
+    let properties = WriterProperties::builder()
+        .set_write_batch_size(100)
+        .set_data_page_row_count_limit(100)
+        .build();
+    write_parquet(
+        name,
+        "message t { optional int64 n; optional binary s (STRING); optional double e; }",
+        &[row_group(false), row_group(true)],
+        properties,
+    )
+}
+
+#[test]
+fn profile_sample_reaches_the_end_of_the_file() {
+    let path = values_at_the_end("values_at_end.parquet");
+    let limits = Limits {
+        sample_rows: 1_000,
+        ..Limits::default()
+    };
+
+    let summary = summarize(&path, &limits);
+
+    let numbers = summary.columns[0].profile.as_ref().expect("number profile");
+    assert_eq!((numbers.values, numbers.distinct), (1_000, 2));
+    assert_eq!(numbers.basis, Basis::Sample);
+    let texts = summary.columns[1].profile.as_ref().expect("text profile");
+    let Shape::TopValues(top) = &texts.shape else {
+        panic!("text shape {:?}", texts.shape);
+    };
+    assert!(top.iter().any(|(value, _)| value == "b"), "{top:?}");
+    assert_eq!(summary.sampled_rows, Some(1_000));
+}
+
+#[test]
+fn an_always_empty_column_gets_an_empty_profile() {
+    let path = values_at_the_end("always_empty.parquet");
+    let limits = Limits {
+        sample_rows: 1_000,
+        ..Limits::default()
+    };
+
+    let empty = &summarize(&path, &limits).columns[2];
+
+    assert_eq!(empty.profile.as_ref().expect("profile").values, 0);
+    assert_eq!(empty.nulls.map(|nulls| nulls.ratio()), Some(1.0));
+}
+
+/// Five rows of a flat column and a nested one; the group is null in rows 0 and 4 and
+/// present with a null inside in row 2.
+fn with_a_nested_column(name: &str) -> PathBuf {
+    let path = common::fixture_path(name);
+    let schema = "message t { optional int64 n; optional group g { optional int32 x; } }";
+    let schema = Arc::new(parse_message_type(schema).expect("valid schema"));
+    let properties = WriterProperties::builder()
+        .set_statistics_enabled(EnabledStatistics::None)
+        .build();
+    let file = File::create(&path).expect("create fixture");
+    let mut writer =
+        SerializedFileWriter::new(file, schema, Arc::new(properties)).expect("parquet writer");
+    let mut row_group = writer.next_row_group().expect("row group");
+    let mut column = row_group.next_column().expect("column").expect("n");
+    column
+        .typed::<Int64Type>()
+        .write_batch(&[1, 2, 3, 4, 5], Some(&[1; 5]), None)
+        .expect("write n");
+    column.close().expect("close n");
+    let mut column = row_group.next_column().expect("column").expect("g.x");
+    column
+        .typed::<Int32Type>()
+        .write_batch(&[7, 8], Some(&[0, 2, 1, 2, 0]), None)
+        .expect("write g.x");
+    column.close().expect("close g.x");
+    row_group.close().expect("close row group");
+    writer.close().expect("close file");
+    path
+}
+
+#[test]
+fn nested_columns_still_count_nulls_from_whole_rows() {
+    let path = with_a_nested_column("nested.parquet");
+
+    let summary = summarize(&path, &Limits::default());
+
+    assert_eq!(summary.columns[1].column_type, ColumnType::Nested);
+    assert_eq!(summary.columns[1].nulls, whole_file_nulls(2));
+    assert_eq!(summary.columns[0].nulls, whole_file_nulls(0));
 }
