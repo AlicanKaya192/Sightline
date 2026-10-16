@@ -894,6 +894,11 @@ export component AppWindow inherits Window {
     // Read by the number formatting, so numbers follow the window's language.
     out property <string> decimal-separator: @tr("decimal separator" => ".");
     out property <string> thousands-separator: @tr("thousands separator" => ",");
+    // Read when the tray icon is created, so its menu uses the app's translation.
+    out property <string> tray-open: @tr("Open");
+    out property <string> tray-start-with-windows: @tr("Start with Windows");
+    out property <string> tray-quit: @tr("Quit");
+    out property <string> tray-tip: @tr("Sightline: select a CSV or Parquet file in Explorer and press Space");
 
     title: root.state == ViewState.loaded ? root.info.name + " — Sightline" : "Sightline";
     background: Theme.background;

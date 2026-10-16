@@ -10,7 +10,22 @@ sightline-core = { path = "../sightline-core" }
 slint = { version = "~1.18.1", features = ["unstable-winit-030"] }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Registry"] }
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+# Only for the shell's COM interfaces (the Explorer selection), which windows-sys does not have.
+windows = { version = "0.62.2", features = [
+    "Win32_System_Com",
+    "Win32_System_Ole",
+    "Win32_System_Variant",
+    "Win32_UI_Shell",
+] }
 
 [build-dependencies]
 slint-build = "1.18.1"

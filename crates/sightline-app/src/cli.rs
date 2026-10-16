@@ -7,6 +7,8 @@ pub struct Options {
     /// File to preview right after the window opens.
     pub file: Option<PathBuf>,
     pub menu: Option<MenuChange>,
+    /// Stay in the notification area and preview files on Space in Explorer.
+    pub tray: bool,
 }
 
 /// Adds or removes the Explorer context menu entry instead of opening the window.
@@ -36,6 +38,7 @@ impl std::error::Error for ArgsError {}
 const LANG_FLAG: &str = "--lang";
 const REGISTER_MENU_FLAG: &str = "--register-menu";
 const UNREGISTER_MENU_FLAG: &str = "--unregister-menu";
+pub const TRAY_FLAG: &str = "--tray";
 
 /// Parses the command line arguments after the program name.
 pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Result<Options, ArgsError> {
@@ -49,6 +52,7 @@ pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Result<Options, Ar
             }
             REGISTER_MENU_FLAG => options.menu = Some(MenuChange::Register),
             UNREGISTER_MENU_FLAG => options.menu = Some(MenuChange::Unregister),
+            TRAY_FLAG => options.tray = true,
             _ if arg.starts_with("--") || options.file.is_some() => {
                 return Err(ArgsError::UnknownArgument(arg));
             }
@@ -129,5 +133,13 @@ mod tests {
 
         assert_eq!(register.menu, Some(MenuChange::Register));
         assert_eq!(unregister.menu, Some(MenuChange::Unregister));
+    }
+
+    #[test]
+    fn tray_flag_starts_the_tray_mode() {
+        let tray = parse(&["--tray"]).expect("valid arguments");
+
+        assert!(tray.tray);
+        assert!(!parse(&[]).expect("valid arguments").tray);
     }
 }

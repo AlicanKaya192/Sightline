@@ -1,8 +1,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod autostart;
 mod cli;
+mod explorer;
+mod hook;
 mod preview;
+mod registry;
+mod resident;
 mod shell_menu;
+mod tray;
+mod trigger;
 mod view;
 
 use slint::winit_030::{EventResult, WinitWindowAccessor, winit::event::WindowEvent};
@@ -26,6 +33,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     open_dropped_files(&window, previewer.clone());
     if let Some(file) = options.file {
         previewer.open(file);
+    }
+    if options.tray {
+        return resident::run(&window, previewer);
     }
     window.run()?;
     Ok(())

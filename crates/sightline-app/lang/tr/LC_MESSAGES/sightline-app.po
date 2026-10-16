@@ -215,3 +215,19 @@ msgstr "{0}: tarihler {1} ile {2} arasında."
 msgctxt "PreviewView"
 msgid "Warnings ({})"
 msgstr "Uyarılar ({})"
+
+msgctxt "AppWindow"
+msgid "Open"
+msgstr "Aç"
+
+msgctxt "AppWindow"
+msgid "Start with Windows"
+msgstr "Windows açılışında başlat"
+
+msgctxt "AppWindow"
+msgid "Quit"
+msgstr "Çık"
+
+msgctxt "AppWindow"
+msgid "Sightline: select a CSV or Parquet file in Explorer and press Space"
+msgstr "Sightline: Gezgin'de bir CSV ya da Parquet dosyası seçip Space'e basın"
