@@ -20,7 +20,8 @@ use ::parquet::record::{Field, Row};
 use ::parquet::schema::types::{ColumnDescPtr, ColumnDescriptor, SchemaDescriptor};
 
 use super::{Limits, ReadError, Reader, has_extension};
-use crate::insights::insights;
+use crate::analysis::analyze;
+use crate::insights::with_sample;
 use crate::profile::profile;
 use crate::summary::{
     Basis, Bounds, ColumnProfile, ColumnSummary, ColumnType, NullCount, RowCount, Summary,
@@ -42,25 +43,34 @@ impl Reader for ParquetReader {
 
         let head = read_rows(&reader, limits.head_rows)?;
         let flat_sample = sample_flat_columns(path, metadata, &mut columns, limits.sample_rows)?;
-        let row_sample = if columns.iter().any(|column| column.profile.is_none()) {
+        // Nested columns need whole rows; those rows then serve the analysis too.
+        let whole_rows = if columns.iter().any(|column| column.profile.is_none()) {
             let rows = read_sample(path, metadata.num_row_groups(), limits.sample_rows)?;
             fill_missing_nulls(&mut columns, &rows, total_rows);
             add_profiles(&mut columns, &rows, total_rows);
-            Some(rows.len() as u64)
+            Some(rows.iter().map(row_text).collect())
         } else {
             None
         };
-        let sampled = flat_sample.or(row_sample);
+        let sample: Vec<Vec<Option<String>>> = whole_rows.or(flat_sample).unwrap_or_default();
+        let sampled = (!sample.is_empty()).then_some(sample.len() as u64);
+        let (analysis, from_sample) = analyze(
+            &columns,
+            &sample,
+            false,
+            basis_of(sample.len() as u64, total_rows),
+        );
 
         Ok(Summary::Table(TableSummary {
             format: TableFormat::Parquet {
                 row_groups: metadata.num_row_groups(),
             },
             rows: RowCount::Exact(total_rows),
-            insights: insights(&columns),
+            insights: with_sample(&columns, from_sample),
             columns,
             head: head.iter().map(row_text).collect(),
             sampled_rows: sampled.filter(|&rows| basis_of(rows, total_rows) == Basis::Sample),
+            analysis,
         }))
     }
 }
@@ -379,25 +389,30 @@ fn read_group(
 /// together, for example nulls only in the last rows of a file.
 const SAMPLE_WINDOWS: u64 = 100;
 
-/// What the sample windows hold for one flat column.
+/// What the sample windows hold for one flat column: one cell per row read, `None` for
+/// null, with present values as text, as whole rows of the file would show them.
 #[derive(Default)]
 struct ColumnSample {
-    nulls: u64,
-    rows: u64,
-    /// Present values as text, as whole rows of the file would show them.
-    values: Vec<String>,
+    cells: Vec<Option<String>>,
+}
+
+impl ColumnSample {
+    fn nulls(&self) -> u64 {
+        self.cells.iter().filter(|cell| cell.is_none()).count() as u64
+    }
 }
 
 /// Reads `count` rows of every flat column in windows from the first row of the file to
 /// the last, and gives the columns their profiles and any null counts missing from the
 /// metadata. Pages between the windows are skipped without being decompressed. Returns
-/// the rows read per column, or `None` without flat columns.
+/// the rows read, with `None` in the cells of other columns, or `None` without flat
+/// columns.
 fn sample_flat_columns(
     path: &Path,
     metadata: &ParquetMetaData,
     columns: &mut [ColumnSummary],
     count: usize,
-) -> Result<Option<u64>, ReadError> {
+) -> Result<Option<Vec<Vec<Option<String>>>>, ReadError> {
     let schema = metadata.file_metadata().schema_descr();
     let flat: Vec<(usize, usize)> = top_level_leaves(schema)
         .into_iter()
@@ -418,25 +433,27 @@ fn sample_flat_columns(
         let (column, row_group) = jobs[job];
         sample_column(reader, flat[column].1, row_group, &ranges[row_group])
     })?;
+    // Jobs run column by column, row groups in order, so every column's cells line up.
     let mut samples: Vec<ColumnSample> = flat.iter().map(|_| ColumnSample::default()).collect();
     for (&(column, _), part) in jobs.iter().zip(parts) {
-        let sample = &mut samples[column];
-        sample.nulls += part.nulls;
-        sample.rows += part.rows;
-        sample.values.extend(part.values);
+        samples[column].cells.extend(part.cells);
     }
 
-    let rows = samples[0].rows;
+    let read = samples[0].cells.len();
+    let mut rows = vec![vec![None; columns.len()]; read];
     for (&(index, _), sample) in flat.iter().zip(samples) {
-        let basis = basis_of(sample.rows, total_rows);
+        let basis = basis_of(sample.cells.len() as u64, total_rows);
         let column = &mut columns[index];
         column.nulls.get_or_insert(NullCount {
-            count: sample.nulls,
-            of_rows: sample.rows,
+            count: sample.nulls(),
+            of_rows: sample.cells.len() as u64,
             basis,
         });
-        let values: Vec<&str> = sample.values.iter().map(String::as_str).collect();
+        let values: Vec<&str> = sample.cells.iter().filter_map(Option::as_deref).collect();
         column.profile = Some(profile_of(&values, column.column_type, basis));
+        for (row, cell) in rows.iter_mut().zip(sample.cells) {
+            row[index] = cell;
+        }
     }
     Ok(Some(rows))
 }
@@ -561,15 +578,15 @@ fn sample_in<T: DataType>(
             None,
             &mut values,
         )?;
-        sample.nulls += levels
-            .iter()
-            .filter(|&&level| level < max_definition)
-            .count() as u64;
-        sample.rows += read as u64;
-        for value in values.drain(..) {
-            sample
-                .values
-                .extend(field_text(&to_field(descriptor, value)?));
+        let mut present = values.drain(..);
+        for record in 0..read {
+            // A required column has no definition levels: every value is present.
+            let is_present = max_definition == 0 || levels.get(record) == Some(&max_definition);
+            let cell = match is_present.then(|| present.next()).flatten() {
+                Some(value) => field_text(&to_field(descriptor, value)?),
+                None => None,
+            };
+            sample.cells.push(cell);
         }
         position = range.end;
     }

@@ -1,0 +1,435 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme, Words } from "common.slint";
+
+export struct StatRow {
+    name: string,
+    count: string,
+    mean: string,
+    std: string,
+    min: string,
+    q1: string,
+    median: string,
+    q3: string,
+    max: string,
+}
+
+export struct CorrelationCell {
+    text: string,
+    // -1 to 1; only meaningful when `defined`.
+    value: float,
+    defined: bool,
+}
+
+export struct CategoryValue {
+    text: string,
+    count: string,
+    share: string,
+    // Share of the largest value in the column, for the bar length.
+    ratio: float,
+}
+
+export struct CategoryColumn {
+    name: string,
+    values: [CategoryValue],
+}
+
+export struct MissingColumn {
+    name: string,
+    percent: string,
+}
+
+component EmptyNote inherits VerticalLayout {
+    in property <string> text;
+    padding: 20px;
+    alignment: start;
+
+    Text {
+        text: root.text;
+        color: Theme.text-muted;
+        wrap: word-wrap;
+    }
+}
+
+component StatHeader inherits Text {
+    color: Theme.text-muted;
+    font-size: 12px;
+    font-weight: 600;
+    horizontal-alignment: right;
+    vertical-alignment: center;
+}
+
+component StatValue inherits Text {
+    color: Theme.text;
+    font-family: Theme.mono-font;
+    font-size: 13px;
+    horizontal-alignment: right;
+    vertical-alignment: center;
+    overflow: elide;
+}
+
+// pandas' describe() for the numeric columns: one row per column.
+export component StatsTable inherits ScrollView {
+    in property <[StatRow]> rows;
+    property <length> name-width: 150px;
+    property <length> cell-width: 88px;
+
+    if root.rows.length == 0: EmptyNote {
+        text: @tr("No numeric columns in this file.");
+    }
+
+    if root.rows.length > 0: VerticalLayout {
+        padding: 20px;
+        spacing: 0px;
+        alignment: start;
+
+        HorizontalLayout {
+            height: 32px;
+            spacing: 8px;
+
+            Text {
+                width: root.name-width;
+                text: @tr("Column");
+                color: Theme.text-muted;
+                font-size: 12px;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+
+            for title in [
+                @tr("count"), @tr("mean"), @tr("std"), @tr("min"), "25%", @tr("median"), "75%", @tr("max"),
+            ]: StatHeader {
+                width: root.cell-width;
+                text: title;
+            }
+        }
+
+        for row[index] in root.rows: Rectangle {
+            height: 34px;
+            background: Math.mod(index, 2) == 0 ? Theme.surface-raised.with-alpha(0.35) : transparent;
+            border-radius: 4px;
+
+            HorizontalLayout {
+                spacing: 8px;
+
+                Text {
+                    width: root.name-width;
+                    text: row.name;
+                    color: Theme.text;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+
+                StatValue {
+                    width: root.cell-width;
+                    text: row.count;
+                }
+
+                StatValue {
+                    width: root.cell-width;
+                    text: row.mean;
+                }
+
+                StatValue {
+                    width: root.cell-width;
+                    text: row.std;
+                }
+
+                StatValue {
+                    width: root.cell-width;
+                    text: row.min;
+                }
+
+                StatValue {
+                    width: root.cell-width;
+                    text: row.q1;
+                }
+
+                StatValue {
+                    width: root.cell-width;
+                    text: row.median;
+                }
+
+                StatValue {
+                    width: root.cell-width;
+                    text: row.q3;
+                }
+
+                StatValue {
+                    width: root.cell-width;
+                    text: row.max;
+                }
+            }
+        }
+    }
+}
+
+// Pearson correlations as a heat map: warm for moving together, cool for opposite.
+export component CorrelationMap inherits ScrollView {
+    in property <[string]> names;
+    in property <[CorrelationCell]> cells;
+    property <length> cell: root.names.length > 12 ? 22px : 44px;
+    property <length> label-width: 160px;
+    property <string> hovered;
+
+    if root.names.length < 2: EmptyNote {
+        text: @tr("Correlations need at least two numeric columns.");
+    }
+
+    if root.names.length >= 2: VerticalLayout {
+        padding: 20px;
+        spacing: 12px;
+        alignment: start;
+
+        Text {
+            text: root.hovered != "" ? root.hovered : @tr("Point at a cell to see the two columns and their correlation.");
+            color: root.hovered != "" ? Theme.text : Theme.text-muted;
+            font-size: 13px;
+        }
+
+        HorizontalLayout {
+            alignment: start;
+            spacing: 8px;
+
+            VerticalLayout {
+                width: root.label-width;
+                spacing: 0px;
+
+                for name[row] in root.names: Text {
+                    height: root.cell;
+                    text: (row + 1) + "  " + name;
+                    color: Theme.text-muted;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                    horizontal-alignment: right;
+                    overflow: elide;
+                }
+            }
+
+            Rectangle {
+                width: root.names.length * root.cell;
+                height: root.names.length * root.cell;
+
+                for value[index] in root.cells: Rectangle {
+                    property <int> at-row: Math.floor(index / root.names.length);
+                    property <int> at-column: Math.mod(index, root.names.length);
+                    x: self.at-column * root.cell;
+                    y: self.at-row * root.cell;
+                    width: root.cell - 2px;
+                    height: root.cell - 2px;
+                    border-radius: 3px;
+                    background: !value.defined ? Theme.surface-raised
+                        : value.value >= 0 ? Theme.accent.with-alpha(0.12 + 0.88 * value.value)
+                        : Theme.info.with-alpha(0.12 + 0.88 * (-value.value));
+                    border-width: area.has-hover ? 2px : 0px;
+                    border-color: Theme.text;
+
+                    if root.cell >= 40px: Text {
+                        text: value.text;
+                        color: Math.abs(value.value) > 0.6 && value.defined ? Theme.background : Theme.text;
+                        font-size: 11px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+
+                    area := TouchArea {
+                        changed has-hover => {
+                            if self.has-hover {
+                                root.hovered = root.names[parent.at-row] + "  ×  " + root.names[parent.at-column] + "   " + value.text;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            alignment: start;
+            spacing: 10px;
+
+            Text {
+                text: "-1";
+                color: Theme.text-muted;
+                font-size: 12px;
+                vertical-alignment: center;
+            }
+
+            Rectangle {
+                width: 220px;
+                height: 10px;
+                border-radius: 5px;
+                background: @linear-gradient(90deg, Theme.info 0%, Theme.surface-raised 50%, Theme.accent 100%);
+            }
+
+            Text {
+                text: "+1";
+                color: Theme.text-muted;
+                font-size: 12px;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+// The most frequent values of each text and true/false column, as bars.
+export component CategoryList inherits ScrollView {
+    in property <[CategoryColumn]> columns;
+
+    if root.columns.length == 0: EmptyNote {
+        text: @tr("No text or true/false columns in this file.");
+    }
+
+    if root.columns.length > 0: VerticalLayout {
+        padding: 20px;
+        spacing: 18px;
+        alignment: start;
+
+        for column in root.columns: Rectangle {
+            background: Theme.surface-raised.with-alpha(0.35);
+            border-radius: 8px;
+
+            VerticalLayout {
+                padding: 14px;
+                spacing: 6px;
+
+                Text {
+                    text: column.name;
+                    color: Theme.text;
+                    font-size: 15px;
+                    font-weight: 600;
+                }
+
+                for value in column.values: HorizontalLayout {
+                    height: 24px;
+                    spacing: 10px;
+
+                    Text {
+                        width: 200px;
+                        text: value.text;
+                        color: Theme.text;
+                        font-family: Theme.mono-font;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+
+                    Rectangle {
+                        horizontal-stretch: 1;
+
+                        Rectangle {
+                            x: 0;
+                            width: Math.max(2px, parent.width * value.ratio);
+                            height: 14px;
+                            border-radius: 3px;
+                            background: Theme.accent;
+                        }
+                    }
+
+                    Text {
+                        width: 80px;
+                        text: value.count;
+                        color: Theme.text;
+                        font-family: Theme.mono-font;
+                        font-size: 13px;
+                        horizontal-alignment: right;
+                        vertical-alignment: center;
+                    }
+
+                    Text {
+                        width: 64px;
+                        text: Words.percent(value.share);
+                        color: Theme.text-muted;
+                        font-size: 12px;
+                        horizontal-alignment: right;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Which cells of the first sample rows are empty: one stripe per column.
+export component MissingMapView inherits ScrollView {
+    in property <[MissingColumn]> columns;
+    in property <int> rows;
+    in property <[bool]> cells;
+    property <length> stripe: Math.max(14px, Math.min(64px, (self.visible-width - 40px) / Math.max(1, root.columns.length)));
+    property <length> row-height: 3px;
+    property <string> hovered;
+
+    if root.rows == 0: EmptyNote {
+        text: @tr("No rows to draw.");
+    }
+
+    if root.rows > 0: VerticalLayout {
+        padding: 20px;
+        spacing: 12px;
+        alignment: start;
+
+        Text {
+            text: root.hovered != "" ? root.hovered : @tr("First {} sample rows, top to bottom. Empty cells are marked; point at a column for its name.", root.rows);
+            color: root.hovered != "" ? Theme.text : Theme.text-muted;
+            font-size: 13px;
+            wrap: word-wrap;
+        }
+
+        // Column names above their stripes; the full name shows on pointing.
+        HorizontalLayout {
+            alignment: start;
+            spacing: 0px;
+
+            for column in root.columns: Text {
+                width: root.stripe;
+                text: column.name;
+                color: Theme.text-muted;
+                font-size: 11px;
+                horizontal-alignment: center;
+                overflow: elide;
+            }
+        }
+
+        Rectangle {
+            width: root.columns.length * root.stripe;
+            height: root.rows * root.row-height;
+            background: Theme.surface-raised;
+            border-radius: 4px;
+            clip: true;
+
+            for missing[index] in root.cells: Rectangle {
+                property <int> at-row: Math.floor(index / root.columns.length);
+                property <int> at-column: Math.mod(index, root.columns.length);
+                visible: missing;
+                x: self.at-column * root.stripe;
+                y: self.at-row * root.row-height;
+                width: root.stripe - 1px;
+                height: root.row-height;
+                background: Theme.accent;
+            }
+
+            for column[index] in root.columns: TouchArea {
+                x: index * root.stripe;
+                width: root.stripe;
+                height: parent.height;
+                changed has-hover => {
+                    if self.has-hover {
+                        root.hovered = column.name + "   " + @tr("{} empty", Words.percent(column.percent));
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            alignment: start;
+            spacing: 0px;
+
+            for column in root.columns: Text {
+                width: root.stripe;
+                text: Words.percent(column.percent);
+                color: Theme.text-muted;
+                font-size: 11px;
+                horizontal-alignment: center;
+            }
+        }
+    }
+}

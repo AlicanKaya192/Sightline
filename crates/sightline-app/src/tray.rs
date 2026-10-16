@@ -36,6 +36,7 @@ const OPEN_ID: usize = 1;
 const START_WITH_WINDOWS_ID: usize = 2;
 const QUIT_ID: usize = 3;
 const ABOUT_ID: usize = 4;
+const SETTINGS_ID: usize = 5;
 
 /// What the shell thread has to act on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,6 +44,7 @@ pub enum TrayEvent {
     SpacePressed { explorer: HWND },
     Open,
     About,
+    Settings,
     ToggleStartWithWindows,
     Quit,
 }
@@ -52,6 +54,7 @@ pub enum TrayEvent {
 pub struct TrayText {
     pub open: String,
     pub about: String,
+    pub settings: String,
     pub start_with_windows: String,
     pub quit: String,
     pub tip: String,
@@ -209,6 +212,7 @@ impl Tray {
         let text = self.text();
         let open = wide(&text.open);
         let about = wide(&text.about);
+        let settings = wide(&text.settings);
         let start = wide(&text.start_with_windows);
         let quit = wide(&text.quit);
         // SAFETY: the menu is created, shown and destroyed here; the texts outlive it.
@@ -218,6 +222,7 @@ impl Tray {
                 return None;
             }
             AppendMenuW(menu, MF_STRING, OPEN_ID, open.as_ptr());
+            AppendMenuW(menu, MF_STRING, SETTINGS_ID, settings.as_ptr());
             AppendMenuW(menu, MF_STRING, ABOUT_ID, about.as_ptr());
             AppendMenuW(
                 menu,
@@ -247,6 +252,7 @@ impl Tray {
         match chosen as usize {
             OPEN_ID => Some(TrayEvent::Open),
             ABOUT_ID => Some(TrayEvent::About),
+            SETTINGS_ID => Some(TrayEvent::Settings),
             START_WITH_WINDOWS_ID => Some(TrayEvent::ToggleStartWithWindows),
             QUIT_ID => Some(TrayEvent::Quit),
             _ => None,

@@ -540,11 +540,11 @@ msgctxt "AppWindow"
 msgid "Sightline could not be removed completely."
 msgstr "Sightline tamamen kaldırılamadı."
 
-msgctxt "AboutView"
+msgctxt "SettingsView"
 msgid "Language"
 msgstr "Dil"
 
-msgctxt "AboutView"
+msgctxt "SettingsView"
 msgid "System language"
 msgstr "Sistem dili"
 
@@ -651,3 +651,189 @@ msgstr "en az {}"
 msgctxt "Words"
 msgid "{}%"
 msgstr "%{}"
+
+msgctxt "AppWindow"
+msgid "Settings"
+msgstr "Ayarlar"
+
+msgctxt "EmptyView"
+msgid "Settings"
+msgstr "Ayarlar"
+
+msgctxt "PreviewView"
+msgid "Statistics"
+msgstr "İstatistikler"
+
+msgctxt "PreviewView"
+msgid "Categories"
+msgstr "Kategoriler"
+
+msgctxt "PreviewView"
+msgid "Correlation"
+msgstr "Korelasyon"
+
+msgctxt "PreviewView"
+msgid "Missing values"
+msgstr "Eksik değerler"
+
+msgctxt "StatsTable"
+msgid "No numeric columns in this file."
+msgstr "Bu dosyada sayısal sütun yok."
+
+msgctxt "StatsTable"
+msgid "Column"
+msgstr "Sütun"
+
+msgctxt "StatsTable"
+msgid "count"
+msgstr "sayı"
+
+msgctxt "StatsTable"
+msgid "mean"
+msgstr "ortalama"
+
+msgctxt "StatsTable"
+msgid "std"
+msgstr "std. sapma"
+
+msgctxt "StatsTable"
+msgid "min"
+msgstr "en küçük"
+
+msgctxt "StatsTable"
+msgid "median"
+msgstr "ortanca"
+
+msgctxt "StatsTable"
+msgid "max"
+msgstr "en büyük"
+
+msgctxt "CorrelationMap"
+msgid "Correlations need at least two numeric columns."
+msgstr "Korelasyon için en az iki sayısal sütun gerekir."
+
+msgctxt "CorrelationMap"
+msgid "Point at a cell to see the two columns and their correlation."
+msgstr "İki sütunu ve korelasyonlarını görmek için bir hücrenin üzerine gelin."
+
+msgctxt "CategoryList"
+msgid "No text or true/false columns in this file."
+msgstr "Bu dosyada metin ya da doğru/yanlış sütunu yok."
+
+msgctxt "MissingMapView"
+msgid "No rows to draw."
+msgstr "Çizilecek satır yok."
+
+msgctxt "MissingMapView"
+msgid "First {} sample rows, top to bottom. Empty cells are marked; point at a column for its name."
+msgstr "Örneklemin ilk {} satırı, yukarıdan aşağıya. Boş hücreler işaretlidir; adını görmek için bir sütunun üzerine gelin."
+
+msgctxt "MissingMapView"
+msgid "{} empty"
+msgstr "{} boş"
+
+msgctxt "SettingsView"
+msgid "Settings"
+msgstr "Ayarlar"
+
+msgctxt "SettingsView"
+msgid "Theme"
+msgstr "Tema"
+
+msgctxt "SettingsView"
+msgid "System"
+msgstr "Sistem"
+
+msgctxt "SettingsView"
+msgid "Light"
+msgstr "Açık"
+
+msgctxt "SettingsView"
+msgid "Dark"
+msgstr "Koyu"
+
+msgctxt "SettingsView"
+msgid "Sample size"
+msgstr "Örneklem büyüklüğü"
+
+msgctxt "SettingsView"
+msgid "Rows read for distributions, statistics and warnings when a file has more. More rows are more exact but slower and use more memory."
+msgstr "Dosyada daha fazla satır varsa dağılımlar, istatistikler ve uyarılar için okunan satır sayısı. Daha çok satır daha doğru sonuç verir ama daha yavaştır ve daha çok bellek kullanır."
+
+msgctxt "SettingsView"
+msgid "{} rows"
+msgstr "{} satır"
+
+msgctxt "SettingsView"
+msgid "Start with Windows"
+msgstr "Windows açılışında başlat"
+
+msgctxt "SettingsView"
+msgid "Sightline then waits in the notification area, so Space in Explorer works right after signing in."
+msgstr "Sightline bildirim alanında bekler; böylece oturum açar açmaz Gezgin'de Space çalışır."
+
+msgctxt "SettingsView"
+msgid "On"
+msgstr "Açık"
+
+msgctxt "SettingsView"
+msgid "Off"
+msgstr "Kapalı"
+
+msgctxt "SettingsView"
+msgid "Back"
+msgstr "Geri"
+
+msgctxt "Words"
+msgid "{0}: {1}% of the values are 0, far below every other value. Does 0 stand for a missing measurement here?"
+msgstr "{0}: değerlerin %{1} kadarı 0 ve diğer bütün değerlerin çok altında. 0 burada eksik ölçüm anlamına mı geliyor?"
+
+msgctxt "Words"
+msgid "{0}: {1} values ({2}%) lie far outside the usual range ({3})."
+msgstr "{0}: {1} değer (%{2}) olağan aralığın ({3}) çok dışında."
+
+msgctxt "Words"
+msgid "{0}: \"{1}\" makes up {2}% of the values. If this is the target, the classes are imbalanced."
+msgstr "{0}: değerlerin %{2} kadarı \"{1}\". Bu sütun hedefse sınıflar dengesiz."
+
+msgctxt "Words"
+msgid "{0} of {1} sample rows repeat an earlier row."
+msgstr "Örneklemdeki {1} satırın {0} tanesi önceki bir satırın tekrarı."
+
+msgctxt "Words"
+msgid "{0}: {1}% of the values are numbers; the column is read as text because of values such as {2}."
+msgstr "{0}: değerlerin %{1} kadarı sayı; sütun {2} gibi değerler yüzünden metin olarak okunuyor."
+
+msgctxt "Words"
+msgid "{0}: the same value seems to be written in different ways: {1}."
+msgstr "{0}: aynı değer farklı biçimlerde yazılmış görünüyor: {1}."
+
+msgctxt "Words"
+msgid "{0}: \"{1}\" makes up {2}% of the values; the column carries little information."
+msgstr "{0}: değerlerin %{2} kadarı \"{1}\"; sütun çok az bilgi taşıyor."
+
+msgctxt "Words"
+msgid "{0} and {1} move together (correlation {2}). One of them may be redundant, or give away the target."
+msgstr "{0} ile {1} birlikte değişiyor (korelasyon {2}). Biri gereksiz olabilir ya da hedefi ele veriyor olabilir."
+
+msgctxt "TitleBar"
+msgid "Minimize"
+msgstr "Simge durumuna küçült"
+
+msgctxt "TitleBar"
+msgid "Maximize"
+msgstr "Ekranı kapla"
+
+msgctxt "TitleBar"
+msgid "Restore"
+msgstr "Önceki boyutuna getir"
+
+msgctxt "TitleBar"
+msgid "Close"
+msgstr "Kapat"
+
+msgctxt "FileHeader"
+msgid "warning"
+msgid_plural "warnings"
+msgstr[0] "uyarı"
+msgstr[1] "uyarı"

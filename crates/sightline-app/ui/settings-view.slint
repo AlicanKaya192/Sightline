@@ -1,0 +1,239 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "common.slint";
+
+export enum LanguageChoice { system, turkish, english }
+
+export component ChoiceButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected;
+    callback clicked;
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-checked: root.selected;
+    background: root.selected ? Theme.accent-soft : area.has-hover ? Theme.surface-raised : Theme.surface;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: root.selected ? Theme.accent : Theme.line;
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        padding-top: 4px;
+        padding-bottom: 4px;
+
+        Text {
+            text: root.text;
+            color: Theme.text;
+        }
+    }
+
+    area := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+export enum ThemeChoice { system, light, dark }
+
+export enum SampleSize { small, medium, large }
+
+component SettingTitle inherits Text {
+    color: Theme.text;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+component SettingNote inherits Text {
+    color: Theme.text-muted;
+    font-size: 12px;
+    wrap: word-wrap;
+}
+
+component Section inherits Rectangle {
+    background: Theme.surface;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: Theme.line;
+
+    VerticalLayout {
+        padding: 16px;
+        spacing: 8px;
+
+        @children
+    }
+}
+
+// Language, theme, sample size and start with Windows; every choice is kept for the next start.
+export component SettingsView inherits Rectangle {
+    in property <LanguageChoice> language;
+    in property <ThemeChoice> theme;
+    in property <SampleSize> sample-size;
+    in property <bool> start-with-windows;
+    callback language-chosen(LanguageChoice);
+    callback theme-chosen(ThemeChoice);
+    callback sample-chosen(SampleSize);
+    callback start-with-windows-toggled;
+    callback close;
+    background: Theme.background;
+
+    // Scrolls when the window is too short for every section.
+    ScrollView {
+        VerticalLayout {
+            alignment: start;
+            padding: 32px;
+            spacing: 14px;
+
+            Text {
+                text: @tr("Settings");
+                color: Theme.text;
+                font-size: 24px;
+                font-weight: 600;
+            }
+
+            Section {
+                SettingTitle {
+                    text: @tr("Language");
+                }
+
+                HorizontalLayout {
+                    alignment: start;
+                    spacing: 8px;
+
+                    ChoiceButton {
+                        text: @tr("System language");
+                        selected: root.language == LanguageChoice.system;
+                        clicked => {
+                            root.language-chosen(LanguageChoice.system);
+                        }
+                    }
+
+                    // Each language is named in itself, so it can be found from either one.
+                    ChoiceButton {
+                        text: "Türkçe";
+                        selected: root.language == LanguageChoice.turkish;
+                        clicked => {
+                            root.language-chosen(LanguageChoice.turkish);
+                        }
+                    }
+
+                    ChoiceButton {
+                        text: "English";
+                        selected: root.language == LanguageChoice.english;
+                        clicked => {
+                            root.language-chosen(LanguageChoice.english);
+                        }
+                    }
+                }
+            }
+
+            Section {
+                SettingTitle {
+                    text: @tr("Theme");
+                }
+
+                HorizontalLayout {
+                    alignment: start;
+                    spacing: 8px;
+
+                    ChoiceButton {
+                        text: @tr("System");
+                        selected: root.theme == ThemeChoice.system;
+                        clicked => {
+                            root.theme-chosen(ThemeChoice.system);
+                        }
+                    }
+
+                    ChoiceButton {
+                        text: @tr("Light");
+                        selected: root.theme == ThemeChoice.light;
+                        clicked => {
+                            root.theme-chosen(ThemeChoice.light);
+                        }
+                    }
+
+                    ChoiceButton {
+                        text: @tr("Dark");
+                        selected: root.theme == ThemeChoice.dark;
+                        clicked => {
+                            root.theme-chosen(ThemeChoice.dark);
+                        }
+                    }
+                }
+            }
+
+            Section {
+                SettingTitle {
+                    text: @tr("Sample size");
+                }
+
+                SettingNote {
+                    text: @tr("Rows read for distributions, statistics and warnings when a file has more. More rows are more exact but slower and use more memory.");
+                }
+
+                HorizontalLayout {
+                    alignment: start;
+                    spacing: 8px;
+
+                    ChoiceButton {
+                        text: @tr("{} rows", "10.000");
+                        selected: root.sample-size == SampleSize.small;
+                        clicked => {
+                            root.sample-chosen(SampleSize.small);
+                        }
+                    }
+
+                    ChoiceButton {
+                        text: @tr("{} rows", "100.000");
+                        selected: root.sample-size == SampleSize.medium;
+                        clicked => {
+                            root.sample-chosen(SampleSize.medium);
+                        }
+                    }
+
+                    ChoiceButton {
+                        text: @tr("{} rows", "1.000.000");
+                        selected: root.sample-size == SampleSize.large;
+                        clicked => {
+                            root.sample-chosen(SampleSize.large);
+                        }
+                    }
+                }
+            }
+
+            Section {
+                SettingTitle {
+                    text: @tr("Start with Windows");
+                }
+
+                SettingNote {
+                    text: @tr("Sightline then waits in the notification area, so Space in Explorer works right after signing in.");
+                }
+
+                HorizontalLayout {
+                    alignment: start;
+
+                    ChoiceButton {
+                        text: root.start-with-windows ? @tr("On") : @tr("Off");
+                        selected: root.start-with-windows;
+                        clicked => {
+                            root.start-with-windows-toggled();
+                        }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                alignment: start;
+
+                ChoiceButton {
+                    text: @tr("Back");
+                    clicked => {
+                        root.close();
+                    }
+                }
+            }
+        }
+    }
+}

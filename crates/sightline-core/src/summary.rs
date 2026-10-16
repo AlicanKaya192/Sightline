@@ -209,6 +209,7 @@ pub struct TableSummary {
     pub insights: Vec<Insight>,
     /// Rows behind the sample-based numbers, when the sample is not the whole file.
     pub sampled_rows: Option<u64>,
+    pub analysis: Analysis,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -326,9 +327,104 @@ pub struct Insight {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum InsightKind {
-    HighNulls { ratio: f64 },
+    HighNulls {
+        ratio: f64,
+    },
     LooksLikeId,
-    SingleValue { value: String },
-    Skewed { skewness: f64 },
-    DateRange { from: String, to: String },
+    SingleValue {
+        value: String,
+    },
+    Skewed {
+        skewness: f64,
+    },
+    DateRange {
+        from: String,
+        to: String,
+    },
+    /// Many zeros far below every other value: zero may stand for "not measured".
+    ZerosAsMissing {
+        ratio: f64,
+    },
+    /// Values beyond 1.5 interquartile ranges from the quartiles.
+    Outliers {
+        count: u64,
+        ratio: f64,
+        low: f64,
+        high: f64,
+    },
+    /// A column with a few values, nearly all of them one value: a skewed class.
+    Imbalanced {
+        value: String,
+        ratio: f64,
+    },
+    /// Rows of the sample equal to an earlier row; reported for the table, not a column.
+    DuplicateRows {
+        count: u64,
+        of_rows: u64,
+    },
+    /// A text column whose values are nearly all numbers; `examples` are the others.
+    NumbersAsText {
+        ratio: f64,
+        examples: Vec<String>,
+    },
+    /// One category written in more than one way (letter case, spaces at the ends).
+    InconsistentSpelling {
+        variants: Vec<String>,
+    },
+    /// Not a single value, but one value nearly everywhere.
+    DominantValue {
+        value: String,
+        ratio: f64,
+    },
+    /// Nearly the same information as another numeric column.
+    HighCorrelation {
+        other: String,
+        r: f64,
+    },
+}
+
+/// What the row sample of a table shows beyond each column on its own.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Analysis {
+    /// Sample rows behind these numbers.
+    pub rows: u64,
+    /// Per column, in column order: statistics of numeric columns.
+    pub stats: Vec<Option<ColumnStats>>,
+    /// Per column: the most frequent values of text and true/false columns.
+    pub categories: Vec<Vec<(String, u64)>>,
+    pub correlation: Option<Correlation>,
+    pub missing: MissingMap,
+    /// Sample rows equal to an earlier sample row.
+    pub duplicates: u64,
+}
+
+/// What pandas' `describe()` gives for a numeric column; the standard deviation is the
+/// sample one (n - 1) and quartiles are linearly interpolated, as there.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ColumnStats {
+    pub count: u64,
+    pub mean: f64,
+    pub std: f64,
+    pub min: f64,
+    pub q1: f64,
+    pub median: f64,
+    pub q3: f64,
+    pub max: f64,
+}
+
+/// Pearson correlations between numeric columns.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Correlation {
+    /// Indexes of the columns, in column order.
+    pub columns: Vec<usize>,
+    /// Row-major square matrix; `NaN` where a column has no spread.
+    pub values: Vec<f64>,
+}
+
+/// Which cells of the first sample rows are missing, row by row.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MissingMap {
+    pub rows: usize,
+    pub columns: usize,
+    pub missing: Vec<bool>,
 }

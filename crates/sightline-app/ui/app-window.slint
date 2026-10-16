@@ -1,12 +1,17 @@
-import { ScrollView, Spinner } from "std-widgets.slint";
-import { ColumnKind, CopyButton, Fact, FormatBadge, HeaderCell, NotebookButton, NotebookState, SampleChip, TabBar, Theme, WarningList, WarningRow, Words } from "common.slint";
+import { Palette, ScrollView, Spinner } from "std-widgets.slint";
+import { ColumnKind, CopyButton, Fact, FormatBadge, HeaderCell, Icons, KindBadge, NotebookButton, NotebookState, SampleChip, TabBar, Theme, WarningList, WarningRow, Words } from "common.slint";
 import { DtypeRow, IoRow, LayerRow, ModelInfo, ModelView, NamedValue, TensorRow } from "model-view.slint";
 import { ArrayInfo, ArrayView } from "array-view.slint";
-import { AboutView, LanguageChoice } from "about-view.slint";
+import { AboutView } from "about-view.slint";
+import { LanguageChoice, SampleSize, SettingsView, ThemeChoice } from "settings-view.slint";
+import { CategoryColumn, CategoryList, CorrelationCell, CorrelationMap, MissingColumn, MissingMapView, StatRow, StatsTable } from "table-extras.slint";
 import { ImportRow, PickleInfo, PickleView } from "pickle-view.slint";
+import { ResizeEdge, ResizeEdges, TitleBar } from "title-bar.slint";
 
 export { ColumnKind, CopyState, Copying, NotebookState, WarningKind, WarningRow, Words } from "common.slint";
-export { LanguageChoice } from "about-view.slint";
+export { LanguageChoice, SampleSize, ThemeChoice } from "settings-view.slint";
+export { ResizeEdge } from "title-bar.slint";
+export { CategoryColumn, CategoryValue, CorrelationCell, MissingColumn, StatRow } from "table-extras.slint";
 export { DtypeRow, IoRow, LayerRow, ModelFormat, ModelInfo, NamedValue, SizeState, TensorRow } from "model-view.slint";
 export { ArrayInfo } from "array-view.slint";
 export { ImportRow, PickleInfo } from "pickle-view.slint";
@@ -64,6 +69,7 @@ export struct FailureInfo {
 component EmptyView inherits VerticalLayout {
     in property <bool> drop-hover;
     callback show-about;
+    callback show-settings;
     padding: 32px;
 
     Rectangle {
@@ -128,6 +134,21 @@ component EmptyView inherits VerticalLayout {
 
             HorizontalLayout {
                 alignment: center;
+                spacing: 24px;
+
+                Text {
+                    text: @tr("Settings");
+                    color: Theme.accent-text;
+                    font-size: 12px;
+                    accessible-role: button;
+
+                    TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.show-settings();
+                        }
+                    }
+                }
 
                 Text {
                     text: @tr("About Sightline");
@@ -248,17 +269,17 @@ component FailureView inherits VerticalLayout {
 
 component FileHeader inherits Rectangle {
     in property <FileInfo> info;
+    in property <int> warnings;
     in property <NotebookState> notebook-state;
     in property <string> notebook-detail;
     callback open-notebook;
-    background: Theme.surface;
 
     VerticalLayout {
-        padding-left: 20px;
-        padding-right: 20px;
+        padding-left: 4px;
+        padding-right: 4px;
         padding-top: 16px;
         padding-bottom: 12px;
-        spacing: 8px;
+        spacing: 12px;
 
         HorizontalLayout {
             spacing: 10px;
@@ -290,7 +311,7 @@ component FileHeader inherits Rectangle {
 
         HorizontalLayout {
             alignment: start;
-            spacing: 20px;
+            spacing: 8px;
 
             Fact {
                 value: root.info.rows-exact ? root.info.rows : @tr("at least {}", root.info.rows);
@@ -320,6 +341,11 @@ component FileHeader inherits Rectangle {
             if root.info.format == FileFormat.excel: Fact {
                 value: root.info.sheet;
                 label: @tr("sheet {} of {}", 1, root.info.sheets);
+            }
+            if root.warnings > 0: Fact {
+                value: root.warnings;
+                label: @tr("warning" | "warnings" % root.warnings);
+                caution: true;
             }
             if root.info.sampled: VerticalLayout {
                 alignment: center;
@@ -387,7 +413,8 @@ component DistributionCell inherits Rectangle {
             y: parent.height - self.height;
             width: root.bar-width;
             height: ratio > 0 ? Math.max(2px, parent.height * ratio) : 0px;
-            border-radius: 1px;
+            border-top-left-radius: 2px;
+            border-top-right-radius: 2px;
             background: Theme.accent;
         }
     }
@@ -497,12 +524,17 @@ component SchemaTable inherits ScrollView {
                     overflow: elide;
                 }
 
-                Text {
-                    text: Words.kind(row.kind);
-                    color: Theme.text-muted;
+                VerticalLayout {
                     width: root.type-width;
-                    vertical-alignment: center;
-                    overflow: elide;
+                    alignment: center;
+
+                    HorizontalLayout {
+                        alignment: start;
+
+                        KindBadge {
+                            kind: row.kind;
+                        }
+                    }
                 }
 
                 NullsCell {
@@ -613,13 +645,24 @@ component PreviewView inherits VerticalLayout {
     in property <[[Cell]]> head-rows;
     in property <[[float]]> histograms;
     in property <[WarningRow]> warnings;
+    in property <[StatRow]> stat-rows;
+    in property <[CategoryColumn]> category-columns;
+    in property <[string]> correlation-names;
+    in property <[CorrelationCell]> correlation-cells;
+    in property <[MissingColumn]> missing-columns;
+    in property <int> missing-rows;
+    in property <[bool]> missing-cells;
     in property <NotebookState> notebook-state;
     in property <string> notebook-detail;
     callback open-notebook;
     property <int> current-tab: 0;
+    padding-left: 16px;
+    padding-right: 16px;
+    padding-bottom: 16px;
 
     FileHeader {
         info: root.info;
+        warnings: root.warnings.length;
         notebook-state: root.notebook-state;
         notebook-detail: root.notebook-detail;
         open-notebook => {
@@ -631,13 +674,23 @@ component PreviewView inherits VerticalLayout {
         titles: [
             @tr("Schema"),
             @tr("First rows"),
+            @tr("Statistics"),
+            @tr("Categories"),
+            @tr("Correlation"),
+            @tr("Missing values"),
             root.warnings.length > 0 ? @tr("Warnings ({})", root.warnings.length) : @tr("Warnings"),
         ];
+        icons: [Icons.table, Icons.rows, Icons.statistics, Icons.categories, Icons.grid, Icons.missing, Icons.warning];
         current <=> root.current-tab;
     }
 
+    // The tab's content as a card on the page background.
     Rectangle {
         background: Theme.surface;
+        border-radius: Theme.card-radius;
+        border-width: 1px;
+        border-color: Theme.line;
+        clip: true;
         vertical-stretch: 1;
 
         if root.current-tab == 0: SchemaTable {
@@ -648,7 +701,22 @@ component PreviewView inherits VerticalLayout {
             titles: root.head-titles;
             rows: root.head-rows;
         }
-        if root.current-tab == 2: WarningList {
+        if root.current-tab == 2: StatsTable {
+            rows: root.stat-rows;
+        }
+        if root.current-tab == 3: CategoryList {
+            columns: root.category-columns;
+        }
+        if root.current-tab == 4: CorrelationMap {
+            names: root.correlation-names;
+            cells: root.correlation-cells;
+        }
+        if root.current-tab == 5: MissingMapView {
+            columns: root.missing-columns;
+            rows: root.missing-rows;
+            cells: root.missing-cells;
+        }
+        if root.current-tab == 6: WarningList {
             warnings: root.warnings;
         }
     }
@@ -665,6 +733,13 @@ export component AppWindow inherits Window {
     in property <[[Cell]]> head-rows;
     in property <[[float]]> histograms;
     in property <[WarningRow]> warnings;
+    in property <[StatRow]> stat-rows;
+    in property <[CategoryColumn]> category-columns;
+    in property <[string]> correlation-names;
+    in property <[CorrelationCell]> correlation-cells;
+    in property <[MissingColumn]> missing-columns;
+    in property <int> missing-rows;
+    in property <[bool]> missing-cells;
     in property <FailureInfo> failure;
     in property <ModelInfo> model-info;
     in property <[DtypeRow]> dtype-rows;
@@ -684,7 +759,28 @@ export component AppWindow inherits Window {
     in-out property <bool> about-open;
     in-out property <LanguageChoice> language;
     callback language-chosen(LanguageChoice);
+    in-out property <bool> settings-open;
+    in-out property <ThemeChoice> theme;
+    in-out property <SampleSize> sample-size;
+    in-out property <bool> start-with-windows;
+    callback theme-chosen(ThemeChoice);
+    callback sample-chosen(SampleSize);
+    callback start-with-windows-toggled;
+    out property <string> tray-settings: @tr("Settings");
+
+    // Forces light or dark; `system-dark` is what Windows uses, for the System choice.
+    public function apply-theme(choice: ThemeChoice, system-dark: bool) {
+        Palette.color-scheme = choice == ThemeChoice.light ? ColorScheme.light
+            : choice == ThemeChoice.dark || system-dark ? ColorScheme.dark
+            : ColorScheme.light;
+    }
     callback close-window;
+    // The window draws its own title bar; Rust moves, resizes and maximizes it.
+    in property <bool> is-maximized;
+    callback drag-window;
+    callback minimize-window;
+    callback toggle-maximized;
+    callback resize-window(ResizeEdge);
     // Read when the shell menu is registered, so the menu uses the app's translation.
     out property <string> menu-verb: @tr("Preview with Sightline");
     // Read by the number formatting, so numbers follow the window's language.
@@ -702,6 +798,7 @@ export component AppWindow inherits Window {
     out property <string> tray-quit: @tr("Quit");
     out property <string> tray-tip: @tr("Sightline: select a data or model file in Explorer and press Space");
 
+    no-frame: true;
     title: root.shown-name() != "" ? root.shown-name() + " — Sightline" : "Sightline";
     background: Theme.background;
     default-font-family: "Segoe UI";
@@ -713,102 +810,162 @@ export component AppWindow inherits Window {
 
     forward-focus: keys;
 
-    // Esc closes the About screen, or else the window, as its close button does.
-    keys := FocusScope {
-        key-pressed(event) => {
-            if event.text != Key.Escape {
-                return reject;
+    VerticalLayout {
+        TitleBar {
+            title: root.title;
+            maximized: root.is-maximized;
+            drag => {
+                root.drag-window();
             }
-            if root.about-open {
-                root.about-open = false;
-            } else {
-                root.close-window();
+            minimize => {
+                root.minimize-window();
             }
-            return accept;
-        }
-
-        VerticalLayout {
-            if root.state == ViewState.empty: EmptyView {
-                drop-hover: root.drop-hover;
-                show-about => {
-                    root.about-open = true;
-                }
-            }
-            if root.state == ViewState.loading: LoadingView {
-                file-name: root.loading-name;
-            }
-            if root.state == ViewState.failed: FailureView {
-                failure: root.failure;
-            }
-            if root.state == ViewState.loaded: PreviewView {
-                info: root.info;
-                schema: root.schema;
-                head-titles: root.head-titles;
-                head-rows: root.head-rows;
-                histograms: root.histograms;
-                warnings: root.warnings;
-                notebook-state: root.notebook-state;
-                notebook-detail: root.notebook-detail;
-                open-notebook => {
-                    root.open-notebook();
-                }
-            }
-            if root.state == ViewState.model: ModelView {
-                info: root.model-info;
-                dtypes: root.dtype-rows;
-                metadata: root.metadata-rows;
-                io: root.io-rows;
-                operators: root.operator-rows;
-                layers: root.layer-rows;
-                tensors: root.tensor-rows;
-                warnings: root.warnings;
-                notebook-state: root.notebook-state;
-                notebook-detail: root.notebook-detail;
-                open-notebook => {
-                    root.open-notebook();
-                }
-            }
-            if root.state == ViewState.array: ArrayView {
-                info: root.array-info;
-                histogram: root.array-histogram;
-                warnings: root.warnings;
-                notebook-state: root.notebook-state;
-                notebook-detail: root.notebook-detail;
-                open-notebook => {
-                    root.open-notebook();
-                }
-            }
-            if root.state == ViewState.pickle: PickleView {
-                info: root.pickle-info;
-                imports: root.import-rows;
-                warnings: root.warnings;
-                notebook-state: root.notebook-state;
-                notebook-detail: root.notebook-detail;
-                open-notebook => {
-                    root.open-notebook();
-                }
-            }
-        }
-
-        if root.about-open: AboutView {
-            width: 100%;
-            height: 100%;
-            version: root.version;
-            language: root.language;
-            language-chosen(choice) => {
-                root.language-chosen(choice);
+            toggle-maximize => {
+                root.toggle-maximized();
             }
             close => {
-                root.about-open = false;
+                root.close-window();
             }
         }
 
-        // Outline while a file is dragged over a window that already shows one.
-        if root.drop-hover && root.state != ViewState.empty: Rectangle {
-            width: 100%;
-            height: 100%;
-            border-width: 2px;
-            border-color: Theme.accent;
+        // Esc closes the About screen, or else the window, as its close button does.
+        keys := FocusScope {
+            key-pressed(event) => {
+                if event.text != Key.Escape {
+                    return reject;
+                }
+                if root.settings-open {
+                    root.settings-open = false;
+                } else if root.about-open {
+                    root.about-open = false;
+                } else {
+                    root.close-window();
+                }
+                return accept;
+            }
+
+            VerticalLayout {
+                if root.state == ViewState.empty: EmptyView {
+                    drop-hover: root.drop-hover;
+                    show-about => {
+                        root.about-open = true;
+                    }
+                    show-settings => {
+                        root.settings-open = true;
+                    }
+                }
+                if root.state == ViewState.loading: LoadingView {
+                    file-name: root.loading-name;
+                }
+                if root.state == ViewState.failed: FailureView {
+                    failure: root.failure;
+                }
+                if root.state == ViewState.loaded: PreviewView {
+                    info: root.info;
+                    schema: root.schema;
+                    head-titles: root.head-titles;
+                    head-rows: root.head-rows;
+                    histograms: root.histograms;
+                    warnings: root.warnings;
+                    stat-rows: root.stat-rows;
+                    category-columns: root.category-columns;
+                    correlation-names: root.correlation-names;
+                    correlation-cells: root.correlation-cells;
+                    missing-columns: root.missing-columns;
+                    missing-rows: root.missing-rows;
+                    missing-cells: root.missing-cells;
+                    notebook-state: root.notebook-state;
+                    notebook-detail: root.notebook-detail;
+                    open-notebook => {
+                        root.open-notebook();
+                    }
+                }
+                if root.state == ViewState.model: ModelView {
+                    info: root.model-info;
+                    dtypes: root.dtype-rows;
+                    metadata: root.metadata-rows;
+                    io: root.io-rows;
+                    operators: root.operator-rows;
+                    layers: root.layer-rows;
+                    tensors: root.tensor-rows;
+                    warnings: root.warnings;
+                    notebook-state: root.notebook-state;
+                    notebook-detail: root.notebook-detail;
+                    open-notebook => {
+                        root.open-notebook();
+                    }
+                }
+                if root.state == ViewState.array: ArrayView {
+                    info: root.array-info;
+                    histogram: root.array-histogram;
+                    warnings: root.warnings;
+                    notebook-state: root.notebook-state;
+                    notebook-detail: root.notebook-detail;
+                    open-notebook => {
+                        root.open-notebook();
+                    }
+                }
+                if root.state == ViewState.pickle: PickleView {
+                    info: root.pickle-info;
+                    imports: root.import-rows;
+                    warnings: root.warnings;
+                    notebook-state: root.notebook-state;
+                    notebook-detail: root.notebook-detail;
+                    open-notebook => {
+                        root.open-notebook();
+                    }
+                }
+            }
+
+            if root.about-open: AboutView {
+                width: 100%;
+                height: 100%;
+                version: root.version;
+                close => {
+                    root.about-open = false;
+                }
+            }
+
+            if root.settings-open: SettingsView {
+                width: 100%;
+                height: 100%;
+                language: root.language;
+                theme: root.theme;
+                sample-size: root.sample-size;
+                start-with-windows: root.start-with-windows;
+                language-chosen(choice) => {
+                    root.language-chosen(choice);
+                }
+                theme-chosen(choice) => {
+                    root.theme-chosen(choice);
+                }
+                sample-chosen(size) => {
+                    root.sample-chosen(size);
+                }
+                start-with-windows-toggled => {
+                    root.start-with-windows-toggled();
+                }
+                close => {
+                    root.settings-open = false;
+                }
+            }
+
+            // Outline while a file is dragged over a window that already shows one.
+            if root.drop-hover && root.state != ViewState.empty: Rectangle {
+                width: 100%;
+                height: 100%;
+                border-width: 2px;
+                border-color: Theme.accent;
+            }
+        }
+    }
+
+    // Last, so the edges stay reachable above everything else.
+    if !root.is-maximized: ResizeEdges {
+        width: 100%;
+        height: 100%;
+        resize(edge) => {
+            root.resize-window(edge);
         }
     }
 

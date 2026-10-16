@@ -1,0 +1,229 @@
+import { Theme } from "common.slint";
+
+// Edges and corners a borderless window is resized from.
+export enum ResizeEdge { north, south, east, west, north-east, north-west, south-east, south-west }
+
+component CaptionButton inherits Rectangle {
+    in property <string> label;
+    // An SVG path in a 10 × 10 box.
+    in property <string> glyph;
+    in property <bool> danger;
+    callback clicked;
+    width: 46px;
+    background: touch.has-hover ? (root.danger ? #C42B1C : Theme.surface-raised) : transparent;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-action-default => {
+        root.clicked();
+    }
+
+    Path {
+        width: 10px;
+        height: 10px;
+        viewbox-width: 10;
+        viewbox-height: 10;
+        commands: root.glyph;
+        stroke: touch.has-hover && root.danger ? #FFFFFF : Theme.text;
+        stroke-width: 1px;
+    }
+
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+// The window's own title bar, in the theme's colours: icon, title, and the minimize,
+// maximize and close buttons. Dragging moves the window; a double click maximizes it.
+export component TitleBar inherits Rectangle {
+    in property <string> title;
+    in property <bool> maximized;
+    callback drag;
+    callback minimize;
+    callback toggle-maximize;
+    callback close;
+    height: 34px;
+    background: Theme.surface;
+
+    // Under the buttons, so they keep their clicks.
+    TouchArea {
+        // A click alone must not start a move, or the second click of a double click
+        // never reaches the window.
+        moved => {
+            if self.pressed {
+                root.drag();
+            }
+        }
+        double-clicked => {
+            root.toggle-maximize();
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: 12px;
+        spacing: 8px;
+
+        Image {
+            source: @image-url("icon.svg");
+            width: 16px;
+            height: 16px;
+            y: (parent.height - self.height) / 2;
+        }
+
+        Text {
+            text: root.title;
+            color: Theme.text-muted;
+            font-size: 12px;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+
+        CaptionButton {
+            label: @tr("Minimize");
+            glyph: "M 0 5 L 10 5";
+            clicked => {
+                root.minimize();
+            }
+        }
+
+        CaptionButton {
+            label: root.maximized ? @tr("Restore") : @tr("Maximize");
+            glyph: root.maximized ? "M 0.5 2.5 L 7.5 2.5 L 7.5 9.5 L 0.5 9.5 Z M 2.5 2.5 L 2.5 0.5 L 9.5 0.5 L 9.5 7.5 L 7.5 7.5" : "M 0.5 0.5 L 9.5 0.5 L 9.5 9.5 L 0.5 9.5 Z";
+            clicked => {
+                root.toggle-maximize();
+            }
+        }
+
+        CaptionButton {
+            label: @tr("Close");
+            glyph: "M 0 0 L 10 10 M 10 0 L 0 10";
+            danger: true;
+            clicked => {
+                root.close();
+            }
+        }
+    }
+
+    // Separates the bar from the content in both themes.
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Theme.line;
+    }
+}
+
+component Edge inherits TouchArea {
+    in property <ResizeEdge> edge;
+    callback resize(ResizeEdge);
+    pointer-event(event) => {
+        if event.kind == PointerEventKind.down && event.button == PointerEventButton.left {
+            root.resize(root.edge);
+        }
+    }
+}
+
+// Thin areas along the border that resize a borderless window; the corners are larger
+// so they are easy to hit.
+export component ResizeEdges {
+    callback resize(ResizeEdge);
+    property <length> thickness: 5px;
+    property <length> corner: 8px;
+
+    Edge {
+        x: root.corner;
+        y: 0;
+        width: root.width - 2 * root.corner;
+        height: root.thickness;
+        edge: ResizeEdge.north;
+        mouse-cursor: ns-resize;
+        resize(edge) => {
+            root.resize(edge);
+        }
+    }
+
+    Edge {
+        x: root.corner;
+        y: root.height - root.thickness;
+        width: root.width - 2 * root.corner;
+        height: root.thickness;
+        edge: ResizeEdge.south;
+        mouse-cursor: ns-resize;
+        resize(edge) => {
+            root.resize(edge);
+        }
+    }
+
+    Edge {
+        x: 0;
+        y: root.corner;
+        width: root.thickness;
+        height: root.height - 2 * root.corner;
+        edge: ResizeEdge.west;
+        mouse-cursor: ew-resize;
+        resize(edge) => {
+            root.resize(edge);
+        }
+    }
+
+    Edge {
+        x: root.width - root.thickness;
+        y: root.corner;
+        width: root.thickness;
+        height: root.height - 2 * root.corner;
+        edge: ResizeEdge.east;
+        mouse-cursor: ew-resize;
+        resize(edge) => {
+            root.resize(edge);
+        }
+    }
+
+    Edge {
+        x: 0;
+        y: 0;
+        width: root.corner;
+        height: root.corner;
+        edge: ResizeEdge.north-west;
+        mouse-cursor: nwse-resize;
+        resize(edge) => {
+            root.resize(edge);
+        }
+    }
+
+    Edge {
+        x: root.width - root.corner;
+        y: root.height - root.corner;
+        width: root.corner;
+        height: root.corner;
+        edge: ResizeEdge.south-east;
+        mouse-cursor: nwse-resize;
+        resize(edge) => {
+            root.resize(edge);
+        }
+    }
+
+    Edge {
+        x: root.width - root.corner;
+        y: 0;
+        width: root.corner;
+        height: root.corner;
+        edge: ResizeEdge.north-east;
+        mouse-cursor: nesw-resize;
+        resize(edge) => {
+            root.resize(edge);
+        }
+    }
+
+    Edge {
+        x: 0;
+        y: root.height - root.corner;
+        width: root.corner;
+        height: root.corner;
+        edge: ResizeEdge.south-west;
+        mouse-cursor: nesw-resize;
+        resize(edge) => {
+            root.resize(edge);
+        }
+    }
+}

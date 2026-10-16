@@ -12,7 +12,7 @@ Sightline is a small Windows app for data scientists and ML engineers. Select a 
 
 | File | What you see |
 |---|---|
-| CSV | Delimiter and encoding (UTF-8 or Windows-1254), column types, missing values, distinct counts, histograms or most frequent values, min and max, first rows, warnings |
+| CSV | Delimiter and encoding (UTF-8 or Windows-1254), column types, missing values, distinct counts, histograms or most frequent values, min and max, first rows; statistics (mean, standard deviation, quartiles), the 10 most common values of each category column, a correlation map and a map of missing cells; warnings |
 | Parquet | The same, with the row count and statistics taken from the file footer; samples spread over the whole file |
 | Excel (`.xlsx`, `.xlsm`) | The same for the first sheet, with the names of all sheets; dates shown as dates, formula results as Excel saved them (formulas are never calculated, macros never read) |
 | safetensors | Every tensor with its type and shape, total parameters by type, a layer tree, metadata, and a check that the file is as long as its header says |
@@ -20,7 +20,7 @@ Sightline is a small Windows app for data scientists and ML engineers. Select a 
 | NPY | Shape, type, memory order, min, max, NaN and infinite counts, a histogram (sampled for large arrays) |
 | Pickle (`.pkl`, `.pickle`) | Protocol, the functions and classes it imports, how many calls it makes, and a warning for dangerous ones such as `os.system` |
 
-Warnings point at things worth checking before training: columns with many missing values, ID-like columns, columns with a single value, strongly skewed numbers, date ranges.
+Warnings point at things worth checking before training: columns with many missing values, ID-like columns, columns with a single value, strongly skewed numbers, date ranges, zeros that may stand for missing values, outliers, imbalanced classes, a dominant value, duplicate rows, numbers stored as text, one value written in different ways, and strongly correlated column pairs.
 
 "Open in notebook" writes a Jupyter notebook with code that reads the file, into `Documents\Sightline`, and opens it.
 
@@ -63,7 +63,7 @@ You can also run `sightline-app.exe` from any folder without installing it.
 - **Drag and drop** a file onto the window, or **right-click** it in Explorer and choose "Preview with Sightline".
 - **Space in Explorer:** start Sightline with `sightline-app.exe --tray`. It waits in the notification area; select a supported file in Explorer and press Space. The tray menu can start it with Windows (off by default).
 - **Copy summary** puts the summary on the clipboard as plain text, in the window's language. **Esc** closes the window.
-- **Language:** the window follows the Windows language (English or Turkish). The About screen lets you pick one, and Sightline remembers it; `--lang en` or `--lang tr` overrides it for one start.
+- **Settings:** language (the Windows language, English or Turkish), theme (system, light or dark), how many rows the summaries sample (10,000, 100,000 or 1,000,000; more rows are slower and use more memory), and start with Windows. Sightline remembers them; `--lang en` or `--lang tr` overrides the language for one start.
 - **Command line:** `sightline.exe ozet <file>` prints the same summary as text.
 
 ![An NPY array: shape, type, min, max, NaN count and a histogram](docs/screenshots/array-en.png)

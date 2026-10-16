@@ -6,11 +6,6 @@ use crate::file_view::{file_warning_row, shape_text, size_check_warning};
 use crate::view::{NumberFormat, relative_heights, size_text};
 use crate::{ArrayInfo, WarningRow};
 
-/// Below and above these, numbers are written in scientific notation.
-const SMALLEST_PLAIN: f64 = 1e-4;
-const LARGEST_PLAIN: f64 = 1e15;
-const FRACTION_DIGITS: usize = 6;
-
 pub fn array_info(
     name: &str,
     size_bytes: u64,
@@ -34,7 +29,7 @@ pub fn array_info(
     };
     if let Some(stats) = &summary.stats {
         let optional =
-            |value: Option<f64>| value.map_or_else(|| "—".to_string(), |v| number_text(v, format));
+            |value: Option<f64>| value.map_or_else(|| "—".to_string(), |v| format.number(v));
         info.has_stats = true;
         info.values = format.count(stats.values).into();
         info.min = optional(stats.min).into();
@@ -64,28 +59,6 @@ pub fn array_warnings(summary: &ArraySummary, format: &NumberFormat) -> Vec<Warn
                 .map(|warning| file_warning_row(warning, format)),
         )
         .collect()
-}
-
-/// Whole numbers with grouped thousands, others with up to six decimals; very small and
-/// very large ones in scientific notation.
-fn number_text(value: f64, format: &NumberFormat) -> String {
-    let sign = if value < 0.0 { "-" } else { "" };
-    let size = value.abs();
-    if size >= LARGEST_PLAIN || (size > 0.0 && size < SMALLEST_PLAIN) {
-        return format!("{value:e}").replace('.', &format.decimal.to_string());
-    }
-    if size.fract() == 0.0 {
-        return format!("{sign}{}", format.count(size as u64));
-    }
-    let text = format!("{size:.FRACTION_DIGITS$}");
-    let (whole, fraction) = text.split_once('.').unwrap_or((&text, ""));
-    let fraction = fraction.trim_end_matches('0');
-    let whole = format.count(whole.parse().unwrap_or(0));
-    if fraction.is_empty() {
-        format!("{sign}{whole}")
-    } else {
-        format!("{sign}{whole}{}{fraction}", format.decimal)
-    }
 }
 
 #[cfg(test)]
@@ -161,10 +134,10 @@ mod tests {
 
     #[test]
     fn tiny_and_huge_numbers_use_scientific_notation() {
-        assert_eq!(number_text(0.00001234, &ENGLISH), "1.234e-5");
-        assert_eq!(number_text(-3e20, &ENGLISH), "-3e20");
-        assert_eq!(number_text(0.0, &ENGLISH), "0");
-        assert_eq!(number_text(-42.0, &ENGLISH), "-42");
+        assert_eq!(ENGLISH.number(0.00001234), "1.234e-5");
+        assert_eq!(ENGLISH.number(-3e20), "-3e20");
+        assert_eq!(ENGLISH.number(0.0), "0");
+        assert_eq!(ENGLISH.number(-42.0), "-42");
     }
 
     #[test]

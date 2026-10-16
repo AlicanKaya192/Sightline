@@ -54,6 +54,7 @@ fn tray_text(window: &AppWindow) -> TrayText {
     TrayText {
         open: window.get_tray_open().into(),
         about: window.get_tray_about().into(),
+        settings: window.get_tray_settings().into(),
         start_with_windows: window.get_tray_start_with_windows().into(),
         quit: window.get_tray_quit().into(),
         tip: window.get_tray_tip().into(),
@@ -108,6 +109,18 @@ impl Ui {
 }
 
 impl Ui {
+    fn show_settings(&self) {
+        let window = self.window.clone();
+        // Fails only when the event loop has already stopped.
+        let _ = slint::invoke_from_event_loop(move || {
+            if let Some(window) = window.upgrade() {
+                window.set_settings_open(true);
+                let _ = window.show();
+                bring_to_front(&window);
+            }
+        });
+    }
+
     fn show_about(&self) {
         let window = self.window.clone();
         // Fails only when the event loop has already stopped.
@@ -183,6 +196,7 @@ fn pump_messages(
                 TrayEvent::SpacePressed { explorer } => preview_selection(explorer, ui),
                 TrayEvent::Open => ui.show(None),
                 TrayEvent::About => ui.show_about(),
+                TrayEvent::Settings => ui.show_settings(),
                 TrayEvent::ToggleStartWithWindows => {
                     // The menu reads the real state again next time, so a failure shows there.
                     let _ = autostart::set_enabled(&exe, !autostart::is_enabled());

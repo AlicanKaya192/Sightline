@@ -12,7 +12,7 @@ Sightline, veri bilimciler ve ML mühendisleri için küçük bir Windows uygula
 
 | Dosya | Ne görürsün |
 |---|---|
-| CSV | Ayırıcı ve kodlama (UTF-8 ya da Windows-1254), sütun türleri, boş değerler, benzersiz değer sayısı, histogram ya da en sık değerler, en küçük ve en büyük değer, ilk satırlar, uyarılar |
+| CSV | Ayırıcı ve kodlama (UTF-8 ya da Windows-1254), sütun türleri, boş değerler, benzersiz değer sayısı, histogram ya da en sık değerler, en küçük ve en büyük değer, ilk satırlar; istatistikler (ortalama, standart sapma, çeyrekler), her kategori sütununun en sık 10 değeri, korelasyon haritası ve boş hücre haritası; uyarılar |
 | Parquet | Aynısı; satır sayısı ve istatistikler dosyanın üst verisinden, örneklem bütün dosyaya yayılmış |
 | Excel (`.xlsx`, `.xlsm`) | İlk sayfa için aynısı, bütün sayfaların adlarıyla; tarihler tarih olarak, formül sonuçları Excel'in kaydettiği gibi (formüller hiç hesaplanmaz, makrolar hiç okunmaz) |
 | safetensors | Her tensörün türü ve şekli, türe göre toplam parametre, katman ağacı, üst veri ve dosyanın başlığın söylediği uzunlukta olup olmadığı |
@@ -20,7 +20,7 @@ Sightline, veri bilimciler ve ML mühendisleri için küçük bir Windows uygula
 | NPY | Şekil, tür, bellek sırası, en küçük, en büyük, NaN ve sonsuz sayısı, histogram (büyük dizilerde örneklemden) |
 | Pickle (`.pkl`, `.pickle`) | Protokol, içe aktardığı fonksiyon ve sınıflar, kaç çağrı yaptığı ve `os.system` gibi tehlikeli olanlar için uyarı |
 
-Uyarılar eğitimden önce bakılması gereken şeyleri gösterir: çok boş değerli sütunlar, kimlik sütununa benzeyenler, tek değerli sütunlar, çok çarpık sayılar, tarih aralıkları.
+Uyarılar eğitimden önce bakılması gereken şeyleri gösterir: çok boş değerli sütunlar, kimlik sütununa benzeyenler, tek değerli sütunlar, çok çarpık sayılar, tarih aralıkları, boş değer yerine yazılmış olabilecek sıfırlar, aykırı değerler, dengesiz sınıflar, baskın değer, yinelenen satırlar, metin olarak saklanmış sayılar, aynı değerin farklı yazımları ve birlikte değişen sütun çiftleri.
 
 "Not defterinde aç", dosyayı okuyan kodla bir Jupyter not defterini `Belgeler\Sightline` altına yazar ve açar.
 
@@ -63,7 +63,7 @@ Kaldırmak için Ayarlar > Uygulamalar'dan Sightline'ı kaldır ya da `sightline
 - Dosyayı pencereye **sürükleyip bırak** ya da Gezgin'de **sağ tıklayıp** "Sightline ile önizle"yi seç.
 - **Gezgin'de Space:** Sightline'ı `sightline-app.exe --tray` ile başlat. Bildirim alanında bekler; Gezgin'de desteklenen bir dosya seçip Space'e bas. Tepsi menüsünden Windows açılışında başlaması açılabilir (varsayılan kapalı).
 - **Özeti kopyala**, özeti pencerenin dilinde düz metin olarak panoya koyar. **Esc** pencereyi kapatır.
-- **Dil:** Pencere Windows'un dilini izler (Türkçe ya da İngilizce). Hakkında ekranından biri seçilebilir ve Sightline seçimi hatırlar; `--lang tr` ya da `--lang en` bir açılış için onu geçersiz kılar.
+- **Ayarlar:** dil (Windows'un dili, Türkçe ya da İngilizce), tema (sistem, açık ya da koyu), özetlerin örneklediği satır sayısı (10.000, 100.000 ya da 1.000.000; daha çok satır daha yavaştır ve daha çok bellek kullanır) ve Windows açılışında başlatma. Sightline seçimleri hatırlar; `--lang tr` ya da `--lang en` dili bir açılış için geçersiz kılar.
 - **Komut satırı:** `sightline.exe ozet <dosya>` aynı özeti metin olarak yazdırır.
 
 ![Bir NPY dizisi: şekil, tür, en küçük, en büyük, NaN sayısı ve histogram](docs/screenshots/array-tr.png)

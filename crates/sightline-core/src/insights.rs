@@ -21,6 +21,25 @@ pub fn insights(columns: &[ColumnSummary]) -> Vec<Insight> {
     columns.iter().flat_map(column_insights).collect()
 }
 
+/// The column insights merged with those from the row sample: table-wide ones first,
+/// then each column's own, followed by its sample-based ones.
+pub fn with_sample(columns: &[ColumnSummary], from_sample: Vec<Insight>) -> Vec<Insight> {
+    let (table, mut per_column): (Vec<Insight>, Vec<Insight>) = from_sample
+        .into_iter()
+        .partition(|insight| insight.column.is_empty());
+    let mut merged = table;
+    for column in columns {
+        merged.extend(column_insights(column));
+        let (own, rest): (Vec<Insight>, Vec<Insight>) = per_column
+            .into_iter()
+            .partition(|insight| insight.column == column.name);
+        merged.extend(own);
+        per_column = rest;
+    }
+    merged.extend(per_column);
+    merged
+}
+
 fn column_insights(column: &ColumnSummary) -> Vec<Insight> {
     [
         high_nulls(column),

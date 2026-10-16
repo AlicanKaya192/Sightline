@@ -4,6 +4,8 @@ export enum WarningKind {
     high-nulls, looks-like-id, single-value, skewed, date-range,
     size-mismatch, bad-offsets, external-data, pickle-inside, no-statistics,
     runs-code, dangerous-import, stopped-early,
+    zeros-as-missing, outliers, imbalanced, duplicate-rows, numbers-as-text,
+    inconsistent-spelling, dominant-value, high-correlation,
 }
 
 export struct WarningRow {
@@ -11,6 +13,7 @@ export struct WarningRow {
     column: string,
     first: string,
     second: string,
+    third: string,
     from-sample: bool,
 }
 
@@ -35,8 +38,41 @@ export global Theme {
     out property <color> info-soft: dark ? #172A40 : #DCE7F4;
     out property <color> bad: dark ? #F07A82 : #AE2730;
     out property <color> bad-soft: dark ? #3A1A1D : #F7DEDF;
+    // Column kinds: text and dates get their own colours, numbers use info.
+    out property <color> kind-text: dark ? #ED93B1 : #993556;
+    out property <color> kind-text-soft: dark ? #3A1A2A : #FBEAF0;
+    out property <color> kind-date: dark ? #5DCAA5 : #0F6E56;
+    out property <color> kind-date-soft: dark ? #10302A : #E1F5EE;
     out property <string> mono-font: "Consolas";
     out property <length> radius: 6px;
+    out property <length> card-radius: 10px;
+}
+
+// Outline icons as SVG paths in a 16 × 16 box, drawn with a stroke.
+export global Icons {
+    out property <string> table: "M 2 3 H 14 V 13 H 2 Z M 2 6.5 H 14 M 6 6.5 V 13";
+    out property <string> rows: "M 2 3.5 H 14 M 2 8 H 14 M 2 12.5 H 14";
+    out property <string> statistics: "M 2 14 H 14 M 4 14 V 9 M 7 14 V 4 M 10 14 V 7 M 13 14 V 11";
+    out property <string> categories: "M 2 2.5 H 6.5 V 7 H 2 Z M 9.5 2.5 H 14 V 7 H 9.5 Z M 2 9.5 H 6.5 V 14 H 2 Z M 9.5 9.5 H 14 V 14 H 9.5 Z";
+    out property <string> grid: "M 2 2 H 14 V 14 H 2 Z M 6 2 V 14 M 10 2 V 14 M 2 6 H 14 M 2 10 H 14";
+    out property <string> missing: "M 2 2 H 5 M 7 2 H 9 M 11 2 H 14 V 5 M 14 7 V 9 M 14 11 V 14 H 11 M 9 14 H 7 M 5 14 H 2 V 11 M 2 9 V 7 M 2 5 V 2";
+    out property <string> warning: "M 8 2 L 14.5 13.5 H 1.5 Z M 8 6.5 V 9.5 M 8 11.2 V 12";
+    out property <string> layers: "M 8 2 L 14 5 L 8 8 L 2 5 Z M 2 8 L 8 11 L 14 8 M 2 11 L 8 14 L 14 11";
+    out property <string> overview: "M 2 2 H 14 V 14 H 2 Z M 5 5.5 H 11 M 5 8 H 11 M 5 10.5 H 8.5";
+    out property <string> copy: "M 5.5 5.5 H 13.5 V 14 H 5.5 Z M 2.5 10.5 V 2 H 10.5";
+    out property <string> notebook: "M 3 2 H 13 V 14 H 3 Z M 6 2 V 14 M 8.5 5.5 H 11 M 8.5 8.5 H 11";
+}
+
+export component Icon inherits Path {
+    in property <string> glyph;
+    in property <color> color;
+    width: 14px;
+    height: 14px;
+    viewbox-width: 16;
+    viewbox-height: 16;
+    commands: root.glyph;
+    stroke: root.color;
+    stroke-width: 1.4px;
 }
 
 export component FormatBadge inherits Rectangle {
@@ -79,56 +115,77 @@ export component SampleChip inherits Rectangle {
     }
 }
 
-export component Fact inherits HorizontalLayout {
+// One number of a file's header in a small card: the label above, the value below.
+export component Fact inherits Rectangle {
     in property <string> value;
     in property <string> label;
-    spacing: 5px;
+    // Warnings stand out in the warn colours.
+    in property <bool> caution;
+    background: root.caution ? Theme.warn-soft : Theme.surface;
+    border-radius: 8px;
+    min-width: 72px;
 
-    Text {
-        text: root.value;
-        color: Theme.text;
-        font-weight: 600;
-    }
+    VerticalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        padding-top: 6px;
+        padding-bottom: 6px;
+        alignment: center;
 
-    Text {
-        text: root.label;
-        color: Theme.text-muted;
+        if root.label != "": Text {
+            text: root.label;
+            color: root.caution ? Theme.warn-text : Theme.text-muted;
+            font-size: 11px;
+        }
+
+        Text {
+            text: root.value;
+            color: root.caution ? Theme.warn-text : Theme.text;
+            font-size: 15px;
+            font-weight: 600;
+        }
     }
 }
 
 export component TabButton inherits Rectangle {
     in property <string> text;
+    // An `Icons` path; none when empty.
+    in property <string> icon;
     in property <bool> selected;
     in property <bool> show-focus;
     callback clicked;
     accessible-role: tab;
     accessible-label: root.text;
-    border-radius: 4px;
+    border-radius: self.height / 2;
     border-width: root.show-focus ? 1px : 0;
     border-color: Theme.accent;
+    background: root.selected ? Theme.accent-soft : area.has-hover ? Theme.surface-raised : transparent;
 
     HorizontalLayout {
-        padding-left: 14px;
-        padding-right: 14px;
-        padding-top: 9px;
-        padding-bottom: 9px;
+        padding-left: 12px;
+        padding-right: 12px;
+        padding-top: 6px;
+        padding-bottom: 6px;
+        spacing: 6px;
+
+        if root.icon != "": VerticalLayout {
+            alignment: center;
+
+            Icon {
+                glyph: root.icon;
+                color: root.selected ? Theme.accent-text : Theme.text-muted;
+            }
+        }
 
         Text {
             text: root.text;
-            color: root.selected ? Theme.text : Theme.text-muted;
+            color: root.selected ? Theme.accent-text : Theme.text-muted;
             font-weight: root.selected ? 600 : 400;
+            vertical-alignment: center;
         }
     }
 
-    Rectangle {
-        x: 0;
-        y: parent.height - self.height;
-        width: parent.width;
-        height: 2px;
-        background: root.selected ? Theme.accent : transparent;
-    }
-
-    TouchArea {
+    area := TouchArea {
         mouse-cursor: pointer;
         clicked => {
             root.clicked();
@@ -139,8 +196,9 @@ export component TabButton inherits Rectangle {
 // Left and right arrow keys move between tabs once the bar has focus.
 export component TabBar inherits Rectangle {
     in property <[string]> titles;
+    // One `Icons` path per title; missing ones leave the tab without an icon.
+    in property <[string]> icons;
     in-out property <int> current;
-    background: Theme.surface;
 
     keys := FocusScope {
         key-pressed(event) => {
@@ -157,10 +215,13 @@ export component TabBar inherits Rectangle {
 
         HorizontalLayout {
             alignment: start;
-            padding-left: 8px;
+            padding-top: 4px;
+            padding-bottom: 10px;
+            spacing: 4px;
 
             for title[index] in root.titles: TabButton {
                 text: title;
+                icon: index < root.icons.length ? root.icons[index] : "";
                 selected: index == root.current;
                 show-focus: keys.has-focus && index == root.current;
                 clicked => {
@@ -168,14 +229,6 @@ export component TabBar inherits Rectangle {
                 }
             }
         }
-    }
-
-    Rectangle {
-        x: 0;
-        y: parent.height - self.height;
-        width: parent.width;
-        height: 1phx;
-        background: Theme.line;
     }
 }
 
@@ -307,6 +360,30 @@ export global Words {
         if warning.kind == WarningKind.dangerous-import {
             return @tr("{0}: loading this file calls a function that can run commands or change files.", warning.column);
         }
+        if warning.kind == WarningKind.zeros-as-missing {
+            return @tr("{0}: {1}% of the values are 0, far below every other value. Does 0 stand for a missing measurement here?", warning.column, warning.first);
+        }
+        if warning.kind == WarningKind.outliers {
+            return @tr("{0}: {1} values ({2}%) lie far outside the usual range ({3}).", warning.column, warning.first, warning.second, warning.third);
+        }
+        if warning.kind == WarningKind.imbalanced {
+            return @tr("{0}: \"{1}\" makes up {2}% of the values. If this is the target, the classes are imbalanced.", warning.column, warning.first, warning.second);
+        }
+        if warning.kind == WarningKind.duplicate-rows {
+            return @tr("{0} of {1} sample rows repeat an earlier row.", warning.first, warning.second);
+        }
+        if warning.kind == WarningKind.numbers-as-text {
+            return @tr("{0}: {1}% of the values are numbers; the column is read as text because of values such as {2}.", warning.column, warning.first, warning.second);
+        }
+        if warning.kind == WarningKind.inconsistent-spelling {
+            return @tr("{0}: the same value seems to be written in different ways: {1}.", warning.column, warning.first);
+        }
+        if warning.kind == WarningKind.dominant-value {
+            return @tr("{0}: \"{1}\" makes up {2}% of the values; the column carries little information.", warning.column, warning.first, warning.second);
+        }
+        if warning.kind == WarningKind.high-correlation {
+            return @tr("{0} and {1} move together (correlation {2}). One of them may be redundant, or give away the target.", warning.column, warning.first, warning.second);
+        }
         if warning.kind == WarningKind.stopped-early {
             return @tr("Reading stopped before the end of the file, so the lists may be incomplete.");
         }
@@ -324,6 +401,7 @@ export global Copying {
 
 export component CopyButton inherits HorizontalLayout {
     spacing: 8px;
+    horizontal-stretch: 0;
     alignment: end;
 
     if Copying.state == CopyState.copied: Text {
@@ -342,16 +420,26 @@ export component CopyButton inherits HorizontalLayout {
     Rectangle {
         accessible-role: button;
         accessible-label: @tr("Copy summary");
-        background: area.has-hover ? Theme.accent-soft : Theme.surface-raised;
-        border-radius: 4px;
+        background: area.has-hover ? Theme.accent-soft : Theme.surface;
+        border-radius: Theme.radius;
         border-width: 1px;
         border-color: Theme.line;
 
         HorizontalLayout {
             padding-left: 10px;
-            padding-right: 10px;
-            padding-top: 4px;
-            padding-bottom: 4px;
+            padding-right: 12px;
+            padding-top: 5px;
+            padding-bottom: 5px;
+            spacing: 6px;
+
+            VerticalLayout {
+                alignment: center;
+
+                Icon {
+                    glyph: Icons.copy;
+                    color: Theme.text-muted;
+                }
+            }
 
             Text {
                 text: @tr("Copy summary");
@@ -417,7 +505,9 @@ export component WarningList inherits ScrollView {
         return kind == WarningKind.high-nulls || kind == WarningKind.single-value
             || kind == WarningKind.size-mismatch || kind == WarningKind.bad-offsets
             || kind == WarningKind.pickle-inside || kind == WarningKind.runs-code
-            || kind == WarningKind.dangerous-import || kind == WarningKind.stopped-early;
+            || kind == WarningKind.dangerous-import || kind == WarningKind.stopped-early
+            || kind == WarningKind.zeros-as-missing || kind == WarningKind.duplicate-rows
+            || kind == WarningKind.numbers-as-text || kind == WarningKind.inconsistent-spelling;
     }
 }
 
@@ -430,6 +520,7 @@ export component NotebookButton inherits HorizontalLayout {
     callback clicked;
     spacing: 8px;
     alignment: end;
+    horizontal-stretch: 0;
 
     if root.state == NotebookState.saved: Text {
         text: @tr("Saved to {}", root.detail);
@@ -449,16 +540,26 @@ export component NotebookButton inherits HorizontalLayout {
     Rectangle {
         accessible-role: button;
         accessible-label: @tr("Open in notebook");
-        background: area.has-hover ? Theme.accent-soft : Theme.surface-raised;
-        border-radius: 4px;
+        background: area.has-hover ? Theme.accent-soft : Theme.surface;
+        border-radius: Theme.radius;
         border-width: 1px;
         border-color: Theme.line;
 
         HorizontalLayout {
             padding-left: 10px;
-            padding-right: 10px;
-            padding-top: 4px;
-            padding-bottom: 4px;
+            padding-right: 12px;
+            padding-top: 5px;
+            padding-bottom: 5px;
+            spacing: 6px;
+
+            VerticalLayout {
+                alignment: center;
+
+                Icon {
+                    glyph: Icons.notebook;
+                    color: Theme.text-muted;
+                }
+            }
 
             Text {
                 text: @tr("Open in notebook");
@@ -473,6 +574,30 @@ export component NotebookButton inherits HorizontalLayout {
             clicked => {
                 root.clicked();
             }
+        }
+    }
+}
+
+// A column's kind as a coloured badge: numbers, text and dates each have their colour.
+export component KindBadge inherits Rectangle {
+    in property <ColumnKind> kind;
+    property <bool> number: root.kind == ColumnKind.integer || root.kind == ColumnKind.float || root.kind == ColumnKind.decimal;
+    property <bool> date: root.kind == ColumnKind.date || root.kind == ColumnKind.time || root.kind == ColumnKind.date-time;
+    property <bool> text: root.kind == ColumnKind.text;
+    background: root.number ? Theme.info-soft : root.text ? Theme.kind-text-soft : root.date ? Theme.kind-date-soft : Theme.surface-raised;
+    border-radius: 4px;
+
+    HorizontalLayout {
+        padding-left: 6px;
+        padding-right: 6px;
+        padding-top: 1px;
+        padding-bottom: 1px;
+
+        Text {
+            text: Words.kind(root.kind);
+            color: root.number ? Theme.info : root.text ? Theme.kind-text : root.date ? Theme.kind-date : Theme.text-muted;
+            font-size: 12px;
+            overflow: elide;
         }
     }
 }

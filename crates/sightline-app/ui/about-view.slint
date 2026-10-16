@@ -1,45 +1,9 @@
 import { Theme } from "common.slint";
 
-export enum LanguageChoice { system, turkish, english }
-
-component ChoiceButton inherits Rectangle {
-    in property <string> text;
-    in property <bool> selected;
-    callback clicked;
-    accessible-role: button;
-    accessible-label: root.text;
-    accessible-checked: root.selected;
-    background: root.selected ? Theme.accent-soft : area.has-hover ? Theme.surface-raised : Theme.surface;
-    border-radius: 4px;
-    border-width: 1px;
-    border-color: root.selected ? Theme.accent : Theme.line;
-
-    HorizontalLayout {
-        padding-left: 12px;
-        padding-right: 12px;
-        padding-top: 4px;
-        padding-bottom: 4px;
-
-        Text {
-            text: root.text;
-            color: Theme.text;
-        }
-    }
-
-    area := TouchArea {
-        mouse-cursor: pointer;
-        clicked => {
-            root.clicked();
-        }
-    }
-}
-
-// Version, license and the window language.
+// Version and license.
 export component AboutView inherits Rectangle {
     in property <string> version;
-    in property <LanguageChoice> language;
     callback close;
-    callback language-chosen(LanguageChoice);
     background: Theme.background;
 
     VerticalLayout {
@@ -68,42 +32,6 @@ export component AboutView inherits Rectangle {
             font-size: 12px;
             horizontal-alignment: center;
             wrap: word-wrap;
-        }
-
-        HorizontalLayout {
-            alignment: center;
-            spacing: 8px;
-
-            Text {
-                text: @tr("Language");
-                color: Theme.text-muted;
-                vertical-alignment: center;
-            }
-
-            ChoiceButton {
-                text: @tr("System language");
-                selected: root.language == LanguageChoice.system;
-                clicked => {
-                    root.language-chosen(LanguageChoice.system);
-                }
-            }
-
-            // Each language is named in itself, so it can be found from either one.
-            ChoiceButton {
-                text: "Türkçe";
-                selected: root.language == LanguageChoice.turkish;
-                clicked => {
-                    root.language-chosen(LanguageChoice.turkish);
-                }
-            }
-
-            ChoiceButton {
-                text: "English";
-                selected: root.language == LanguageChoice.english;
-                clicked => {
-                    root.language-chosen(LanguageChoice.english);
-                }
-            }
         }
 
         HorizontalLayout {

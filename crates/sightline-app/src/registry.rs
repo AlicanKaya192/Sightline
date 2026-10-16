@@ -6,8 +6,8 @@ use std::os::windows::ffi::OsStrExt;
 
 use windows_sys::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS, WIN32_ERROR};
 use windows_sys::Win32::System::Registry::{
-    HKEY_CURRENT_USER, REG_SZ, RRF_RT_REG_SZ, RegDeleteKeyValueW, RegDeleteKeyW, RegGetValueW,
-    RegSetKeyValueW,
+    HKEY_CURRENT_USER, REG_SZ, RRF_RT_REG_DWORD, RRF_RT_REG_SZ, RegDeleteKeyValueW, RegDeleteKeyW,
+    RegGetValueW, RegSetKeyValueW,
 };
 
 /// Sets one text value, creating `key` if needed; `""` is the key's default value.
@@ -68,6 +68,25 @@ pub fn get_value(key: &str, name: &str) -> Option<String> {
     }
     let text = data.split(|&unit| unit == 0).next().unwrap_or_default();
     Some(String::from_utf16_lossy(text))
+}
+
+/// Reads one 32-bit number; `None` when the key or the value does not exist or is not one.
+pub fn get_dword(key: &str, name: &str) -> Option<u32> {
+    let mut value = 0u32;
+    let mut byte_len = size_of::<u32>() as u32;
+    // SAFETY: the paths are NUL-terminated UTF-16 buffers; `value` holds `byte_len` bytes.
+    let status = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            wide(key).as_ptr(),
+            wide(name).as_ptr(),
+            RRF_RT_REG_DWORD,
+            std::ptr::null_mut(),
+            (&raw mut value).cast(),
+            &mut byte_len,
+        )
+    };
+    (status == ERROR_SUCCESS).then_some(value)
 }
 
 /// Deletes one value; a value or key that does not exist is fine.

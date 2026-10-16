@@ -17,8 +17,11 @@ mod pickle_view;
 mod preview;
 mod registry;
 mod resident;
+mod settings;
 mod shell_menu;
 mod summary_text;
+mod table_extras;
+mod title_bar;
 mod tray;
 mod trigger;
 mod view;
@@ -43,6 +46,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         None if saved_language != LanguageChoice::System => language::select(saved_language)?,
         None => {}
     }
+    let theme = settings::theme();
+    window.set_theme(theme);
+    // Left alone, the window follows Windows' theme as it changes.
+    if theme != ThemeChoice::System {
+        window.invoke_apply_theme(theme, settings::windows_is_dark());
+    }
     if let Some(change) = options.menu {
         return change_menu(change, &window);
     }
@@ -50,8 +59,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         run_setup(setup, &window);
         return Ok(());
     }
-    let previewer = Previewer::new(&window);
-    open_dropped_files(&window, previewer.clone());
+    let sample_size = settings::sample_size();
+    window.set_sample_size(sample_size);
+    window.set_start_with_windows(autostart::is_enabled());
+    let previewer = Previewer::new(&window, settings::sample_rows(sample_size));
+    keep_settings(&window, &previewer);
+    let frame = title_bar::connect(&window);
+    watch_window_events(&window, previewer.clone(), frame);
     let notebook_previewer = previewer.clone();
     window.on_open_notebook(move || notebook_previewer.open_notebook());
     close_on_escape(&window);
@@ -73,7 +87,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Applies a language picked on the About screen and keeps it for the next start.
+/// Theme, sample size and start with Windows, as picked on the Settings screen.
+fn keep_settings(window: &AppWindow, previewer: &Previewer) {
+    let app = window.as_weak();
+    window.on_theme_chosen(move |choice| {
+        let Some(window) = app.upgrade() else {
+            return;
+        };
+        window.set_theme(choice);
+        // Not reported: the window still switches; only the next start may not.
+        let _ = settings::save_theme(choice);
+        window.invoke_apply_theme(choice, settings::windows_is_dark());
+    });
+    let app = window.as_weak();
+    let sample_previewer = previewer.clone();
+    window.on_sample_chosen(move |size| {
+        if let Some(window) = app.upgrade() {
+            window.set_sample_size(size);
+        }
+        let _ = settings::save_sample_size(size);
+        sample_previewer.set_sample_rows(settings::sample_rows(size));
+        sample_previewer.refresh();
+    });
+    let app = window.as_weak();
+    window.on_start_with_windows_toggled(move || {
+        let Some(window) = app.upgrade() else {
+            return;
+        };
+        if let Ok(exe) = std::env::current_exe() {
+            let _ = autostart::set_enabled(&exe, !autostart::is_enabled());
+        }
+        // The real state, so a failed change shows as unchanged.
+        window.set_start_with_windows(autostart::is_enabled());
+    });
+}
+
+/// Applies a language picked on the Settings screen and keeps it for the next start.
 pub fn change_language(window: &AppWindow, previewer: &Previewer, choice: LanguageChoice) {
     window.set_language(choice);
     // Failures are not reported: the window still switches; only the next start may not.
@@ -114,27 +163,39 @@ fn close_on_escape(window: &AppWindow) {
     });
 }
 
-/// Slint does not pass files dragged from Explorer on, so they are taken from winit.
-fn open_dropped_files(window: &AppWindow, previewer: Previewer) {
+/// Slint keeps one winit event filter per window: it serves the title bar, and takes the
+/// files dragged from Explorer, which Slint does not pass on.
+fn watch_window_events(window: &AppWindow, previewer: Previewer, frame: title_bar::FrameEvents) {
     let app = window.as_weak();
     window
         .window()
-        .on_winit_window_event(move |_, event| match event {
-            WindowEvent::HoveredFile(_) => {
-                set_drop_hover(&app, true);
-                EventResult::PreventDefault
-            }
-            WindowEvent::HoveredFileCancelled => {
-                set_drop_hover(&app, false);
-                EventResult::PreventDefault
-            }
-            WindowEvent::DroppedFile(path) => {
-                set_drop_hover(&app, false);
-                previewer.open(path.clone());
-                EventResult::PreventDefault
-            }
-            _ => EventResult::Propagate,
+        .on_winit_window_event(move |slint_window, event| {
+            frame.handle(slint_window, event);
+            dropped_files(&app, &previewer, event)
         });
+}
+
+fn dropped_files(
+    app: &slint::Weak<AppWindow>,
+    previewer: &Previewer,
+    event: &WindowEvent,
+) -> EventResult {
+    match event {
+        WindowEvent::HoveredFile(_) => {
+            set_drop_hover(app, true);
+            EventResult::PreventDefault
+        }
+        WindowEvent::HoveredFileCancelled => {
+            set_drop_hover(app, false);
+            EventResult::PreventDefault
+        }
+        WindowEvent::DroppedFile(path) => {
+            set_drop_hover(app, false);
+            previewer.open(path.clone());
+            EventResult::PreventDefault
+        }
+        _ => EventResult::Propagate,
+    }
 }
 
 fn set_drop_hover(app: &slint::Weak<AppWindow>, hovering: bool) {

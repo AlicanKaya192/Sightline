@@ -15,6 +15,7 @@ fn table(format: TableFormat) -> Summary {
         head: Vec::new(),
         insights: Vec::new(),
         sampled_rows: None,
+        analysis: Default::default(),
     })
 }
 

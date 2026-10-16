@@ -3,7 +3,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 
@@ -16,7 +16,7 @@ use slint::{ComponentHandle, ModelRc, VecModel};
 use crate::view::NumberFormat;
 use crate::{
     AppWindow, CopyState, Copying, NotebookState, ViewState, array_view, model_view, notebook_file,
-    pickle_view, view,
+    pickle_view, table_extras, view,
 };
 
 struct Loaded {
@@ -36,15 +36,22 @@ pub struct Previewer {
     /// Number of the newest request; results of older ones are dropped.
     latest: Arc<AtomicU64>,
     shown: Arc<Mutex<Option<Shown>>>,
+    /// Rows the summaries sample, from the Settings screen.
+    sample_rows: Arc<AtomicUsize>,
 }
 
 impl Previewer {
-    pub fn new(window: &AppWindow) -> Self {
+    pub fn new(window: &AppWindow, sample_rows: usize) -> Self {
         Self {
             window: window.as_weak(),
             latest: Arc::new(AtomicU64::new(0)),
             shown: Arc::new(Mutex::new(None)),
+            sample_rows: Arc::new(AtomicUsize::new(sample_rows)),
         }
+    }
+
+    pub fn set_sample_rows(&self, rows: usize) {
+        self.sample_rows.store(rows, Ordering::SeqCst);
     }
 
     pub fn open(&self, path: PathBuf) {
@@ -58,8 +65,9 @@ impl Previewer {
         }
         self.set_shown(None);
         let previewer = self.clone();
+        let limits = limits(self.sample_rows.load(Ordering::SeqCst));
         thread::spawn(move || {
-            let result = load(&path);
+            let result = load(&path, &limits);
             let window = previewer.window.clone();
             // Fails only when the window is already closed; then nobody needs the result.
             let _ = window.upgrade_in_event_loop(move |window| {
@@ -121,9 +129,21 @@ impl Previewer {
     }
 }
 
-fn load(path: &Path) -> Result<Loaded, ReadError> {
+/// The default limits with `sample_rows`; text files are read that much further, so a
+/// larger sample reaches more rows of a CSV too.
+fn limits(sample_rows: usize) -> Limits {
+    let default = Limits::default();
+    let bytes_per_row = default.sample_bytes / default.sample_rows;
+    Limits {
+        sample_rows,
+        sample_bytes: bytes_per_row.saturating_mul(sample_rows),
+        ..default
+    }
+}
+
+fn load(path: &Path, limits: &Limits) -> Result<Loaded, ReadError> {
     let size_bytes = fs::metadata(path)?.len();
-    let summary = summarize(path, &Limits::default())?;
+    let summary = summarize(path, limits)?;
     Ok(Loaded {
         size_bytes,
         summary,
@@ -178,6 +198,24 @@ fn show_table(
     window.set_head_rows(model(rows));
     window.set_histograms(model(histograms));
     window.set_warnings(model(view::warning_rows(&table.insights, format)));
+    let analysis = &table.analysis;
+    window.set_stat_rows(model(table_extras::stat_rows(
+        &table.columns,
+        analysis,
+        format,
+    )));
+    window.set_category_columns(model(table_extras::category_columns(
+        &table.columns,
+        analysis,
+        format,
+    )));
+    let (names, cells) = table_extras::correlation(&table.columns, analysis, format);
+    window.set_correlation_names(model(names));
+    window.set_correlation_cells(model(cells));
+    let (columns, rows, cells) = table_extras::missing(&table.columns, analysis, format);
+    window.set_missing_columns(model(columns));
+    window.set_missing_rows(rows);
+    window.set_missing_cells(model(cells));
     window.set_state(ViewState::Loaded);
 }
 

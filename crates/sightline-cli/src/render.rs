@@ -195,6 +195,7 @@ mod tests {
             head: vec![vec![Some("1".into()), None]],
             insights: vec![],
             sampled_rows: None,
+            analysis: Default::default(),
         }
     }
 

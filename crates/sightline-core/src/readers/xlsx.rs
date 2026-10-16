@@ -9,7 +9,8 @@ use super::csv::{row_count, summarize_columns};
 use super::xml::{Token, attribute, local_name, tokens, unescape};
 use super::zip_archive::Archive;
 use super::{Limits, ReadError, Reader, has_extension};
-use crate::insights::insights;
+use crate::analysis::analyze;
+use crate::insights::with_sample;
 use crate::summary::{Basis, Summary, TableFormat, TableSummary};
 
 /// Most bytes one part may unpack to; larger sheets are counted only this far. Also keeps
@@ -70,6 +71,7 @@ impl Reader for XlsxReader {
             Basis::Sample
         };
         let columns = summarize_columns(&table.header, sample, false, basis);
+        let (analysis, from_sample) = analyze(&columns, sample, false, basis);
         Ok(Summary::Table(TableSummary {
             format: TableFormat::Excel {
                 sheets: workbook
@@ -79,10 +81,11 @@ impl Reader for XlsxReader {
                     .collect(),
             },
             rows: row_count(table.data_rows, is_complete),
-            insights: insights(&columns),
+            insights: with_sample(&columns, from_sample),
             columns,
             head: table.rows.iter().take(limits.head_rows).cloned().collect(),
             sampled_rows: (basis == Basis::Sample).then_some(sample.len() as u64),
+            analysis,
         }))
     }
 }

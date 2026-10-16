@@ -45,15 +45,53 @@ impl NumberFormat {
 
     /// A number rounded to one decimal place, e.g. `6.7`.
     pub fn one_decimal(&self, number: f64) -> String {
-        let text = format!("{number:.1}");
-        let (whole, fraction) = text.split_once('.').unwrap_or((&text, "0"));
-        format!(
-            "{}{}{fraction}",
-            group_digits(whole, self.thousands),
-            self.decimal
-        )
+        self.decimals(number, 1)
+    }
+
+    /// A number rounded to `digits` decimal places, e.g. `0.95` for two.
+    pub fn decimals(&self, number: f64, digits: usize) -> String {
+        let text = format!("{number:.digits$}");
+        match text.split_once('.') {
+            Some((whole, fraction)) => format!(
+                "{}{}{fraction}",
+                group_digits(whole, self.thousands),
+                self.decimal
+            ),
+            None => group_digits(&text, self.thousands),
+        }
+    }
+
+    /// Whole numbers with grouped thousands, others with up to six decimals; very small
+    /// and very large ones in scientific notation. A dash where there is no number.
+    pub fn number(&self, value: f64) -> String {
+        if !value.is_finite() {
+            return "—".to_string();
+        }
+        let sign = if value < 0.0 { "-" } else { "" };
+        let size = value.abs();
+        if size >= LARGEST_PLAIN || (size > 0.0 && size < SMALLEST_PLAIN) {
+            return format!("{value:e}").replace('.', &self.decimal.to_string());
+        }
+        if size.fract() == 0.0 {
+            return format!("{sign}{}", self.count(size as u64));
+        }
+        let text = format!("{size:.FRACTION_DIGITS$}");
+        let (whole, fraction) = text.split_once('.').unwrap_or((&text, ""));
+        let fraction = fraction.trim_end_matches('0');
+        let whole = self.count(whole.parse().unwrap_or(0));
+        if fraction.is_empty() {
+            format!("{sign}{whole}")
+        } else {
+            format!("{sign}{whole}{}{fraction}", self.decimal)
+        }
     }
 }
+
+/// Below this, and from the largest plain size up, numbers are written in scientific notation.
+const SMALLEST_PLAIN: f64 = 1e-4;
+const LARGEST_PLAIN: f64 = 1e15;
+/// Decimals kept by `NumberFormat::number`, before trailing zeros are cut.
+const FRACTION_DIGITS: usize = 6;
 
 /// Puts `separator` between groups of three digits, counted from the right.
 fn group_digits(digits: &str, separator: char) -> String {
@@ -237,30 +275,109 @@ pub fn relative_heights(bins: &[u64]) -> Vec<f32> {
 }
 
 fn warning_row(insight: &Insight, format: &NumberFormat) -> WarningRow {
-    let (kind, first, second) = match &insight.kind {
+    let percent = |ratio: f64| format.one_decimal(ratio * 100.0);
+    let (kind, first, second, third) = match &insight.kind {
         InsightKind::HighNulls { ratio } => (
             WarningKind::HighNulls,
-            format.one_decimal(ratio * 100.0),
+            percent(*ratio),
+            String::new(),
             String::new(),
         ),
-        InsightKind::LooksLikeId => (WarningKind::LooksLikeId, String::new(), String::new()),
-        InsightKind::SingleValue { value } => {
-            (WarningKind::SingleValue, value.clone(), String::new())
-        }
+        InsightKind::LooksLikeId => (
+            WarningKind::LooksLikeId,
+            String::new(),
+            String::new(),
+            String::new(),
+        ),
+        InsightKind::SingleValue { value } => (
+            WarningKind::SingleValue,
+            value.clone(),
+            String::new(),
+            String::new(),
+        ),
         InsightKind::Skewed { skewness } => (
             WarningKind::Skewed,
             format.one_decimal(*skewness),
             String::new(),
+            String::new(),
         ),
-        InsightKind::DateRange { from, to } => (WarningKind::DateRange, from.clone(), to.clone()),
+        InsightKind::DateRange { from, to } => (
+            WarningKind::DateRange,
+            from.clone(),
+            to.clone(),
+            String::new(),
+        ),
+        InsightKind::ZerosAsMissing { ratio } => (
+            WarningKind::ZerosAsMissing,
+            percent(*ratio),
+            String::new(),
+            String::new(),
+        ),
+        InsightKind::Outliers {
+            count,
+            ratio,
+            low,
+            high,
+        } => (
+            WarningKind::Outliers,
+            format.count(*count),
+            percent(*ratio),
+            format!("{} – {}", format.number(*low), format.number(*high)),
+        ),
+        InsightKind::Imbalanced { value, ratio } => (
+            WarningKind::Imbalanced,
+            value.clone(),
+            percent(*ratio),
+            String::new(),
+        ),
+        InsightKind::DuplicateRows { count, of_rows } => (
+            WarningKind::DuplicateRows,
+            format.count(*count),
+            format.count(*of_rows),
+            String::new(),
+        ),
+        InsightKind::NumbersAsText { ratio, examples } => (
+            WarningKind::NumbersAsText,
+            percent(*ratio),
+            quoted(examples, ", "),
+            String::new(),
+        ),
+        InsightKind::InconsistentSpelling { variants } => (
+            WarningKind::InconsistentSpelling,
+            quoted(variants, " / "),
+            String::new(),
+            String::new(),
+        ),
+        InsightKind::DominantValue { value, ratio } => (
+            WarningKind::DominantValue,
+            value.clone(),
+            percent(*ratio),
+            String::new(),
+        ),
+        InsightKind::HighCorrelation { other, r } => (
+            WarningKind::HighCorrelation,
+            other.clone(),
+            format.decimals(*r, 2),
+            String::new(),
+        ),
     };
     WarningRow {
         kind,
         column: insight.column.as_str().into(),
         first: first.into(),
         second: second.into(),
+        third: third.into(),
         from_sample: insight.basis == Basis::Sample,
     }
+}
+
+/// Values in quotes, so spaces at their ends stay visible.
+fn quoted(values: &[String], separator: &str) -> String {
+    values
+        .iter()
+        .map(|value| format!("\"{value}\""))
+        .collect::<Vec<_>>()
+        .join(separator)
 }
 
 fn column_kind(column_type: ColumnType) -> ColumnKind {
@@ -341,6 +458,7 @@ mod tests {
             head: vec![],
             insights: vec![],
             sampled_rows: None,
+            analysis: Default::default(),
         }
     }
 
@@ -636,6 +754,69 @@ mod tests {
         assert!(!rows[0].from_sample);
         assert_eq!(rows[1].kind, WarningKind::LooksLikeId);
         assert!(rows[1].from_sample);
+    }
+
+    #[test]
+    fn sample_warnings_carry_their_numbers_in_the_language_style() {
+        let found = [
+            insight(
+                InsightKind::Outliers {
+                    count: 1200,
+                    ratio: 0.034,
+                    low: -2.5,
+                    high: 1500.25,
+                },
+                Basis::Sample,
+            ),
+            insight(
+                InsightKind::NumbersAsText {
+                    ratio: 0.95,
+                    examples: vec!["yok".into(), "?".into()],
+                },
+                Basis::Sample,
+            ),
+            insight(
+                InsightKind::InconsistentSpelling {
+                    variants: vec!["İstanbul".into(), "İstanbul ".into()],
+                },
+                Basis::Sample,
+            ),
+            insight(
+                InsightKind::HighCorrelation {
+                    other: "inch".into(),
+                    r: -0.987,
+                },
+                Basis::Sample,
+            ),
+        ];
+
+        let rows = warning_rows(&found, &TURKISH);
+
+        let summary: Vec<(WarningKind, &str, &str, &str)> = rows
+            .iter()
+            .map(|r| {
+                (
+                    r.kind,
+                    r.first.as_str(),
+                    r.second.as_str(),
+                    r.third.as_str(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            summary,
+            [
+                (WarningKind::Outliers, "1.200", "3,4", "-2,5 – 1.500,25"),
+                (WarningKind::NumbersAsText, "95,0", "\"yok\", \"?\"", ""),
+                (
+                    WarningKind::InconsistentSpelling,
+                    "\"İstanbul\" / \"İstanbul \"",
+                    "",
+                    ""
+                ),
+                (WarningKind::HighCorrelation, "inch", "-0,99", ""),
+            ]
+        );
     }
 
     #[test]

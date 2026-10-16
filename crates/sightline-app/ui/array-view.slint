@@ -1,5 +1,5 @@
 import { ScrollView } from "std-widgets.slint";
-import { CopyButton, Fact, FormatBadge, NotebookButton, NotebookState, SampleChip, TabBar, Theme, WarningList, WarningRow } from "common.slint";
+import { CopyButton, Fact, FormatBadge, Icons, NotebookButton, NotebookState, SampleChip, TabBar, Theme, WarningList, WarningRow } from "common.slint";
 
 export struct ArrayInfo {
     name: string,
@@ -90,6 +90,9 @@ component StatsPanel inherits ScrollView {
 }
 
 export component ArrayView inherits VerticalLayout {
+    padding-left: 16px;
+    padding-right: 16px;
+    padding-bottom: 16px;
     in property <ArrayInfo> info;
     in property <[float]> histogram;
     in property <[WarningRow]> warnings;
@@ -99,11 +102,9 @@ export component ArrayView inherits VerticalLayout {
     property <int> current-tab: 0;
 
     Rectangle {
-        background: Theme.surface;
-
         VerticalLayout {
-            padding-left: 20px;
-            padding-right: 20px;
+            padding-left: 4px;
+            padding-right: 4px;
             padding-top: 16px;
             padding-bottom: 12px;
             spacing: 8px;
@@ -138,7 +139,7 @@ export component ArrayView inherits VerticalLayout {
 
             HorizontalLayout {
                 alignment: start;
-                spacing: 20px;
+                spacing: 8px;
 
                 Fact {
                     value: root.info.shape;
@@ -178,11 +179,17 @@ export component ArrayView inherits VerticalLayout {
             @tr("Values"),
             root.warnings.length > 0 ? @tr("Warnings ({})", root.warnings.length) : @tr("Warnings"),
         ];
+        icons: [Icons.statistics, Icons.warning];
         current <=> root.current-tab;
     }
 
+    // The tab's content as a card on the page background.
     Rectangle {
         background: Theme.surface;
+        border-radius: Theme.card-radius;
+        border-width: 1px;
+        border-color: Theme.line;
+        clip: true;
         vertical-stretch: 1;
 
         if root.current-tab == 0: StatsPanel {

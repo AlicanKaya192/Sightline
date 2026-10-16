@@ -436,3 +436,17 @@ fn nested_columns_still_count_nulls_from_whole_rows() {
     assert_eq!(summary.columns[1].nulls, whole_file_nulls(2));
     assert_eq!(summary.columns[0].nulls, whole_file_nulls(0));
 }
+
+#[test]
+fn analysis_rows_keep_every_null_in_its_own_row_and_column() {
+    let path = write_people("people_analysis.parquet", EnabledStatistics::Chunk);
+
+    let summary = summarize(&path, &Limits::default());
+
+    let missing = &summary.analysis.missing;
+    assert_eq!((missing.rows, missing.columns), (5, 5));
+    // Row 2 of the file: id 2, no name, no score, false, 2022-01-09.
+    assert_eq!(missing.missing[5..10], [false, true, true, false, false]);
+    let score = summary.analysis.stats[2].expect("score statistics");
+    assert_eq!((score.count, score.min, score.max), (3, -2.0, 3.25));
+}

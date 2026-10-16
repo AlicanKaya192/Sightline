@@ -8,7 +8,8 @@ use std::path::Path;
 use encoding_rs::WINDOWS_1254;
 
 use super::{Limits, ReadError, Reader, has_extension};
-use crate::insights::insights;
+use crate::analysis::analyze;
+use crate::insights::with_sample;
 use crate::profile::profile;
 use crate::summary::{
     Basis, Bounds, ColumnSummary, ColumnType, NullCount, RowCount, Summary, TableFormat,
@@ -49,16 +50,18 @@ impl Reader for CsvReader {
         // Turkish and other European CSVs use `;` between fields and `,` in numbers.
         let decimal_comma = delimiter == b';';
         let columns = summarize_columns(&table.header, sample, decimal_comma, basis);
+        let (analysis, from_sample) = analyze(&columns, sample, decimal_comma, basis);
         Ok(Summary::Table(TableSummary {
             format: TableFormat::Csv {
                 delimiter,
                 encoding,
             },
             rows: row_count(table.rows.len(), is_complete),
-            insights: insights(&columns),
+            insights: with_sample(&columns, from_sample),
             columns,
             head: table.rows.iter().take(limits.head_rows).cloned().collect(),
             sampled_rows: (basis == Basis::Sample).then_some(sample.len() as u64),
+            analysis,
         }))
     }
 }
