@@ -6,6 +6,9 @@ mod cli;
 mod explorer;
 mod file_view;
 mod hook;
+mod icon;
+mod install;
+mod known_folder;
 mod model_view;
 mod notebook_file;
 mod pickle_view;
@@ -19,7 +22,7 @@ mod view;
 
 use slint::winit_030::{EventResult, WinitWindowAccessor, winit::event::WindowEvent};
 
-use cli::MenuChange;
+use cli::{MenuChange, Setup};
 use preview::Previewer;
 
 slint::include_modules!();
@@ -27,12 +30,17 @@ slint::include_modules!();
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let options = cli::parse_args(std::env::args().skip(1))?;
     let window = AppWindow::new()?;
+    window.set_version(env!("CARGO_PKG_VERSION").into());
     // Slint picks the system language on its own; the flag only overrides it.
     if let Some(language) = &options.language {
         slint::select_bundled_translation(language)?;
     }
     if let Some(change) = options.menu {
         return change_menu(change, &window);
+    }
+    if let Some(setup) = options.setup {
+        run_setup(setup, &window);
+        return Ok(());
     }
     let previewer = Previewer::new(&window);
     open_dropped_files(&window, previewer.clone());
@@ -75,6 +83,49 @@ fn set_drop_hover(app: &slint::Weak<AppWindow>, hovering: bool) {
     if let Some(window) = app.upgrade() {
         window.set_drop_hover(hovering);
     }
+}
+
+/// Installs or uninstalls and says how it went in a message box, since there is no console.
+fn run_setup(setup: Setup, window: &AppWindow) {
+    let (result, done, failed) = match setup {
+        Setup::Install => (
+            install::install(&window.get_menu_verb()).map(|_| ()),
+            window.get_install_done(),
+            window.get_install_failed(),
+        ),
+        Setup::Uninstall => (
+            install::uninstall(),
+            window.get_uninstall_done(),
+            window.get_uninstall_failed(),
+        ),
+    };
+    match result {
+        Ok(()) => message_box(&done, false),
+        Err(error) => message_box(&format!("{failed}\n\n{error}"), true),
+    }
+}
+
+fn message_box(text: &str, is_error: bool) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        MB_ICONERROR, MB_ICONINFORMATION, MB_OK, MessageBoxW,
+    };
+
+    let wide = |text: &str| -> Vec<u16> { text.encode_utf16().chain([0]).collect() };
+    let icon = if is_error {
+        MB_ICONERROR
+    } else {
+        MB_ICONINFORMATION
+    };
+    let (text, caption) = (wide(text), wide("Sightline"));
+    // SAFETY: both strings are NUL-terminated and outlive the call; no owner window.
+    unsafe {
+        MessageBoxW(
+            std::ptr::null_mut(),
+            text.as_ptr(),
+            caption.as_ptr(),
+            MB_OK | icon,
+        )
+    };
 }
 
 fn change_menu(change: MenuChange, window: &AppWindow) -> Result<(), Box<dyn std::error::Error>> {

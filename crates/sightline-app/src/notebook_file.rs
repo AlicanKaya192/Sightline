@@ -6,6 +6,8 @@ use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
+use crate::known_folder;
+
 const FOLDER_NAME: &str = "Sightline";
 const EXTENSION: &str = "ipynb";
 /// Enough numbered names for any real use; past it, something is wrong with the folder.
@@ -42,7 +44,8 @@ pub fn save_new(folder: &Path, source: &Path, text: &str) -> io::Result<PathBuf>
 
 /// `Documents\Sightline` of the current user, wherever Documents has been moved to.
 pub fn notebook_folder() -> io::Result<PathBuf> {
-    documents_folder().map(|documents| documents.join(FOLDER_NAME))
+    known_folder::path(&windows::Win32::UI::Shell::FOLDERID_Documents)
+        .map(|documents| documents.join(FOLDER_NAME))
 }
 
 /// Opens `path` with its associated program; without one, shows its folder instead.
@@ -81,22 +84,6 @@ fn shell_open(path: &Path) -> io::Result<()> {
         Ok(())
     } else {
         Err(io::Error::from_raw_os_error(result as i32))
-    }
-}
-
-fn documents_folder() -> io::Result<PathBuf> {
-    use windows::Win32::System::Com::CoTaskMemFree;
-    use windows::Win32::UI::Shell::{FOLDERID_Documents, KF_FLAG_DEFAULT, SHGetKnownFolderPath};
-
-    // SAFETY: the returned string is read once and then freed with the COM allocator,
-    // as SHGetKnownFolderPath requires.
-    unsafe {
-        let path = SHGetKnownFolderPath(&FOLDERID_Documents, KF_FLAG_DEFAULT, None)
-            .map_err(|error| io::Error::other(error.message()))?;
-        let text = path.to_string();
-        CoTaskMemFree(Some(path.as_ptr() as *const _));
-        text.map(PathBuf::from)
-            .map_err(|_| io::Error::other("the Documents path is not valid text"))
     }
 }
 

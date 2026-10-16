@@ -1,0 +1,78 @@
+import { AboutSlint } from "std-widgets.slint";
+import { Theme } from "common.slint";
+
+// Version, license and the Slint attribution the royalty-free license asks for.
+export component AboutView inherits Rectangle {
+    in property <string> version;
+    callback close;
+    background: Theme.background;
+
+    VerticalLayout {
+        alignment: center;
+        padding: 32px;
+        spacing: 12px;
+
+        Text {
+            text: "Sightline " + root.version;
+            color: Theme.text;
+            font-size: 24px;
+            font-weight: 600;
+            horizontal-alignment: center;
+        }
+
+        Text {
+            text: @tr("See inside your data files without opening them.");
+            color: Theme.text-muted;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+
+        Text {
+            text: @tr("Free software under the MIT License. Copyright 2026 Alican Kaya.");
+            color: Theme.text-muted;
+            font-size: 12px;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+
+        HorizontalLayout {
+            alignment: center;
+
+            AboutSlint {
+                max-width: 320px;
+            }
+        }
+
+        HorizontalLayout {
+            alignment: center;
+
+            Rectangle {
+                accessible-role: button;
+                accessible-label: @tr("Back");
+                background: area.has-hover ? Theme.accent-soft : Theme.surface-raised;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: Theme.line;
+
+                HorizontalLayout {
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    padding-top: 6px;
+                    padding-bottom: 6px;
+
+                    Text {
+                        text: @tr("Back");
+                        color: Theme.text;
+                    }
+                }
+
+                area := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        root.close();
+                    }
+                }
+            }
+        }
+    }
+}

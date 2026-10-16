@@ -9,6 +9,14 @@ pub struct Options {
     pub menu: Option<MenuChange>,
     /// Stay in the notification area and preview files on Space in Explorer.
     pub tray: bool,
+    pub setup: Option<Setup>,
+}
+
+/// Installs or removes Sightline for the current user instead of opening the window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Setup {
+    Install,
+    Uninstall,
 }
 
 /// Adds or removes the Explorer context menu entry instead of opening the window.
@@ -39,6 +47,8 @@ const LANG_FLAG: &str = "--lang";
 const REGISTER_MENU_FLAG: &str = "--register-menu";
 const UNREGISTER_MENU_FLAG: &str = "--unregister-menu";
 pub const TRAY_FLAG: &str = "--tray";
+const INSTALL_FLAG: &str = "--install";
+pub const UNINSTALL_FLAG: &str = "--uninstall";
 
 /// Parses the command line arguments after the program name.
 pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Result<Options, ArgsError> {
@@ -53,6 +63,8 @@ pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Result<Options, Ar
             REGISTER_MENU_FLAG => options.menu = Some(MenuChange::Register),
             UNREGISTER_MENU_FLAG => options.menu = Some(MenuChange::Unregister),
             TRAY_FLAG => options.tray = true,
+            INSTALL_FLAG => options.setup = Some(Setup::Install),
+            UNINSTALL_FLAG => options.setup = Some(Setup::Uninstall),
             _ if arg.starts_with("--") || options.file.is_some() => {
                 return Err(ArgsError::UnknownArgument(arg));
             }
@@ -141,5 +153,15 @@ mod tests {
 
         assert!(tray.tray);
         assert!(!parse(&[]).expect("valid arguments").tray);
+    }
+
+    #[test]
+    fn setup_flags_install_or_uninstall() {
+        let install = parse(&["--install"]).expect("valid arguments");
+        let uninstall = parse(&["--uninstall"]).expect("valid arguments");
+
+        assert_eq!(install.setup, Some(Setup::Install));
+        assert_eq!(uninstall.setup, Some(Setup::Uninstall));
+        assert_eq!(parse(&[]).expect("valid arguments").setup, None);
     }
 }

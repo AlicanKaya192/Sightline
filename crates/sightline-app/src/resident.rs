@@ -31,6 +31,7 @@ use crate::{AppWindow, autostart, explorer, trigger};
 pub fn run(window: &AppWindow, previewer: Previewer) -> Result<(), Box<dyn Error>> {
     let text = TrayText {
         open: window.get_tray_open().into(),
+        about: window.get_tray_about().into(),
         start_with_windows: window.get_tray_start_with_windows().into(),
         quit: window.get_tray_quit().into(),
         tip: window.get_tray_tip().into(),
@@ -68,6 +69,20 @@ impl Ui {
             }
             if let Some(window) = window.upgrade() {
                 // Nothing to report to when it fails; the next Space press tries again.
+                let _ = window.show();
+                bring_to_front(&window);
+            }
+        });
+    }
+}
+
+impl Ui {
+    fn show_about(&self) {
+        let window = self.window.clone();
+        // Fails only when the event loop has already stopped.
+        let _ = slint::invoke_from_event_loop(move || {
+            if let Some(window) = window.upgrade() {
+                window.set_about_open(true);
                 let _ = window.show();
                 bring_to_front(&window);
             }
@@ -127,6 +142,7 @@ fn pump_messages(text: TrayText, ui: &Ui) -> Result<(), io::Error> {
             match event {
                 TrayEvent::SpacePressed { explorer } => preview_selection(explorer, ui),
                 TrayEvent::Open => ui.show(None),
+                TrayEvent::About => ui.show_about(),
                 TrayEvent::ToggleStartWithWindows => {
                     // The menu reads the real state again next time, so a failure shows there.
                     let _ = autostart::set_enabled(&exe, !autostart::is_enabled());

@@ -13,13 +13,14 @@ use windows_sys::Win32::UI::Shell::{
     NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW, Shell_NotifyIconW,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow,
-    GetCursorPos, IDI_APPLICATION, LoadIconW, MF_CHECKED, MF_SEPARATOR, MF_STRING, PostMessageW,
-    RegisterClassW, RegisterWindowMessageW, SetForegroundWindow, TPM_RETURNCMD, TPM_RIGHTBUTTON,
-    TrackPopupMenu, WM_APP, WM_CLOSE, WM_LBUTTONUP, WM_NULL, WM_RBUTTONUP, WNDCLASSW,
+    AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyIcon, DestroyMenu,
+    DestroyWindow, GetCursorPos, GetSystemMetrics, HICON, IDI_APPLICATION, LoadIconW, MF_CHECKED,
+    MF_SEPARATOR, MF_STRING, PostMessageW, RegisterClassW, RegisterWindowMessageW, SM_CXSMICON,
+    SetForegroundWindow, TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenu, WM_APP, WM_CLOSE,
+    WM_LBUTTONUP, WM_NULL, WM_RBUTTONUP, WNDCLASSW,
 };
 
-use crate::autostart;
+use crate::{autostart, icon};
 
 /// Message the keyboard hook posts to the tray window; `WPARAM` is the Explorer window.
 pub const SPACE_PRESSED: u32 = WM_APP + 1;
@@ -30,12 +31,14 @@ const ICON_ID: u32 = 1;
 const OPEN_ID: usize = 1;
 const START_WITH_WINDOWS_ID: usize = 2;
 const QUIT_ID: usize = 3;
+const ABOUT_ID: usize = 4;
 
 /// What the shell thread has to act on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayEvent {
     SpacePressed { explorer: HWND },
     Open,
+    About,
     ToggleStartWithWindows,
     Quit,
 }
@@ -43,6 +46,7 @@ pub enum TrayEvent {
 /// Menu and tooltip text, already translated.
 pub struct TrayText {
     pub open: String,
+    pub about: String,
     pub start_with_windows: String,
     pub quit: String,
     pub tip: String,
@@ -66,6 +70,8 @@ thread_local! {
 pub struct Tray {
     window: HWND,
     text: TrayText,
+    /// Sightline's own icon; `None` falls back to the stock application icon.
+    icon: Option<HICON>,
 }
 
 impl Tray {
@@ -103,7 +109,13 @@ impl Tray {
         if window.is_null() {
             return Err(io::Error::last_os_error());
         }
-        let tray = Self { window, text };
+        // SAFETY: plain query of a system metric.
+        let size = unsafe { GetSystemMetrics(SM_CXSMICON) };
+        let tray = Self {
+            window,
+            text,
+            icon: u32::try_from(size).ok().and_then(icon::handle),
+        };
         tray.add_icon()?;
         Ok(tray)
     }
@@ -133,8 +145,10 @@ impl Tray {
         let mut data = self.icon_data();
         data.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
         data.uCallbackMessage = ICON_MESSAGE;
-        // SAFETY: a null instance with `IDI_APPLICATION` loads the stock application icon.
-        data.hIcon = unsafe { LoadIconW(ptr::null_mut(), IDI_APPLICATION) };
+        data.hIcon = self.icon.unwrap_or_else(|| {
+            // SAFETY: a null instance with `IDI_APPLICATION` loads the stock application icon.
+            unsafe { LoadIconW(ptr::null_mut(), IDI_APPLICATION) }
+        });
         let tip: Vec<u16> = self.text.tip.encode_utf16().collect();
         let len = tip.len().min(data.szTip.len() - 1);
         data.szTip[..len].copy_from_slice(&tip[..len]);
@@ -161,6 +175,7 @@ impl Tray {
             0
         };
         let open = wide(&self.text.open);
+        let about = wide(&self.text.about);
         let start = wide(&self.text.start_with_windows);
         let quit = wide(&self.text.quit);
         // SAFETY: the menu is created, shown and destroyed here; the texts outlive it.
@@ -170,6 +185,7 @@ impl Tray {
                 return None;
             }
             AppendMenuW(menu, MF_STRING, OPEN_ID, open.as_ptr());
+            AppendMenuW(menu, MF_STRING, ABOUT_ID, about.as_ptr());
             AppendMenuW(
                 menu,
                 MF_STRING | start_flag,
@@ -197,6 +213,7 @@ impl Tray {
         };
         match chosen as usize {
             OPEN_ID => Some(TrayEvent::Open),
+            ABOUT_ID => Some(TrayEvent::About),
             START_WITH_WINDOWS_ID => Some(TrayEvent::ToggleStartWithWindows),
             QUIT_ID => Some(TrayEvent::Quit),
             _ => None,
@@ -211,6 +228,9 @@ impl Drop for Tray {
         unsafe {
             Shell_NotifyIconW(NIM_DELETE, &data);
             DestroyWindow(self.window);
+            if let Some(icon) = self.icon {
+                DestroyIcon(icon);
+            }
         }
     }
 }

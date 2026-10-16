@@ -2,6 +2,7 @@ import { ScrollView, Spinner } from "std-widgets.slint";
 import { Fact, FormatBadge, HeaderCell, NotebookButton, NotebookState, SampleChip, TabBar, Theme, WarningList, WarningRow } from "common.slint";
 import { DtypeRow, IoRow, LayerRow, ModelInfo, ModelView, NamedValue, TensorRow } from "model-view.slint";
 import { ArrayInfo, ArrayView } from "array-view.slint";
+import { AboutView } from "about-view.slint";
 import { ImportRow, PickleInfo, PickleView } from "pickle-view.slint";
 
 export { NotebookState, WarningKind, WarningRow } from "common.slint";
@@ -60,6 +61,7 @@ export struct FailureInfo {
 
 component EmptyView inherits VerticalLayout {
     in property <bool> drop-hover;
+    callback show-about;
     padding: 32px;
 
     Rectangle {
@@ -115,6 +117,24 @@ component EmptyView inherits VerticalLayout {
 
                 FormatBadge {
                     text: "PKL";
+                }
+            }
+
+            HorizontalLayout {
+                alignment: center;
+
+                Text {
+                    text: @tr("About Sightline");
+                    color: Theme.accent-text;
+                    font-size: 12px;
+                    accessible-role: button;
+
+                    TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.show-about();
+                        }
+                    }
                 }
             }
         }
@@ -235,7 +255,6 @@ component FileHeader inherits Rectangle {
         spacing: 8px;
 
         HorizontalLayout {
-            alignment: start;
             spacing: 10px;
 
             FormatBadge {
@@ -655,6 +674,7 @@ component PreviewView inherits VerticalLayout {
 }
 
 export component AppWindow inherits Window {
+    icon: @image-url("icon.svg");
     in property <ViewState> state: ViewState.empty;
     in property <bool> drop-hover;
     in property <string> loading-name;
@@ -679,6 +699,8 @@ export component AppWindow inherits Window {
     in property <NotebookState> notebook-state;
     in property <string> notebook-detail;
     callback open-notebook;
+    in property <string> version;
+    in-out property <bool> about-open;
     // Read when the shell menu is registered, so the menu uses the app's translation.
     out property <string> menu-verb: @tr("Preview with Sightline");
     // Read by the number formatting, so numbers follow the window's language.
@@ -687,6 +709,12 @@ export component AppWindow inherits Window {
     // Read when the tray icon is created, so its menu uses the app's translation.
     out property <string> tray-open: @tr("Open");
     out property <string> tray-start-with-windows: @tr("Start with Windows");
+    out property <string> tray-about: @tr("About Sightline");
+    // Read by --install and --uninstall, which report in a message box.
+    out property <string> install-done: @tr("Sightline is installed. Open it from the Start menu, or right-click a data or model file in Explorer and choose Preview with Sightline.");
+    out property <string> install-failed: @tr("Sightline could not be installed.");
+    out property <string> uninstall-done: @tr("Sightline is removed. Your files were not touched.");
+    out property <string> uninstall-failed: @tr("Sightline could not be removed completely.");
     out property <string> tray-quit: @tr("Quit");
     out property <string> tray-tip: @tr("Sightline: select a data or model file in Explorer and press Space");
 
@@ -702,6 +730,9 @@ export component AppWindow inherits Window {
     VerticalLayout {
         if root.state == ViewState.empty: EmptyView {
             drop-hover: root.drop-hover;
+            show-about => {
+                root.about-open = true;
+            }
         }
         if root.state == ViewState.loading: LoadingView {
             file-name: root.loading-name;
@@ -773,6 +804,15 @@ export component AppWindow inherits Window {
             return root.pickle-info.name;
         }
         return "";
+    }
+
+    if root.about-open: AboutView {
+        width: 100%;
+        height: 100%;
+        version: root.version;
+        close => {
+            root.about-open = false;
+        }
     }
 
     // Outline while a file is dragged over a window that already shows one.

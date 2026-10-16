@@ -503,3 +503,39 @@ msgstr "Uyarılar ({})"
 msgctxt "PickleView"
 msgid "Warnings"
 msgstr "Uyarılar"
+
+msgctxt "AboutView"
+msgid "Back"
+msgstr "Geri"
+
+msgctxt "AboutView"
+msgid "Free software under the MIT License. Copyright 2026 Alican Kaya."
+msgstr "MIT Lisansı ile özgür yazılım. Telif hakkı 2026 Alican Kaya."
+
+msgctxt "AboutView"
+msgid "See inside your data files without opening them."
+msgstr "Veri dosyalarının içini açmadan gör."
+
+msgctxt "AppWindow"
+msgid "About Sightline"
+msgstr "Sightline hakkında"
+
+msgctxt "EmptyView"
+msgid "About Sightline"
+msgstr "Sightline hakkında"
+
+msgctxt "AppWindow"
+msgid "Sightline is installed. Open it from the Start menu, or right-click a data or model file in Explorer and choose Preview with Sightline."
+msgstr "Sightline kuruldu. Başlat menüsünden açabilir ya da Gezgin'de bir veri veya model dosyasına sağ tıklayıp \"Sightline ile önizle\"yi seçebilirsiniz."
+
+msgctxt "AppWindow"
+msgid "Sightline could not be installed."
+msgstr "Sightline kurulamadı."
+
+msgctxt "AppWindow"
+msgid "Sightline is removed. Your files were not touched."
+msgstr "Sightline kaldırıldı. Dosyalarınıza dokunulmadı."
+
+msgctxt "AppWindow"
+msgid "Sightline could not be removed completely."
+msgstr "Sightline tamamen kaldırılamadı."
