@@ -292,6 +292,11 @@ unsafe extern "system" fn window_proc(
     match raw {
         Some(raw) => {
             QUEUE.with_borrow_mut(|queue| queue.push_back(raw));
+            // GetMessageW returns only for posted messages; the icon's messages may be sent,
+            // and the menu would then wait for the next unrelated message. Posting an empty
+            // one wakes the loop so the event is handled now.
+            // SAFETY: posting to this thread's own live window.
+            unsafe { PostMessageW(window, WM_NULL, 0, 0) };
             0
         }
         // SAFETY: every other message gets the default handling.
