@@ -1,10 +1,45 @@
-import { AboutSlint } from "std-widgets.slint";
 import { Theme } from "common.slint";
 
-// Version, license and the Slint attribution the royalty-free license asks for.
+export enum LanguageChoice { system, turkish, english }
+
+component ChoiceButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected;
+    callback clicked;
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-checked: root.selected;
+    background: root.selected ? Theme.accent-soft : area.has-hover ? Theme.surface-raised : Theme.surface;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: root.selected ? Theme.accent : Theme.line;
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        padding-top: 4px;
+        padding-bottom: 4px;
+
+        Text {
+            text: root.text;
+            color: Theme.text;
+        }
+    }
+
+    area := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+// Version, license and the window language.
 export component AboutView inherits Rectangle {
     in property <string> version;
+    in property <LanguageChoice> language;
     callback close;
+    callback language-chosen(LanguageChoice);
     background: Theme.background;
 
     VerticalLayout {
@@ -28,7 +63,7 @@ export component AboutView inherits Rectangle {
         }
 
         Text {
-            text: @tr("Free software under the MIT License. Copyright 2026 Alican Kaya.");
+            text: @tr("Free software under the GNU General Public License v3; Sightline's own code is also under the MIT License. Copyright 2026 Alican Kaya.");
             color: Theme.text-muted;
             font-size: 12px;
             horizontal-alignment: center;
@@ -37,9 +72,37 @@ export component AboutView inherits Rectangle {
 
         HorizontalLayout {
             alignment: center;
+            spacing: 8px;
 
-            AboutSlint {
-                max-width: 320px;
+            Text {
+                text: @tr("Language");
+                color: Theme.text-muted;
+                vertical-alignment: center;
+            }
+
+            ChoiceButton {
+                text: @tr("System language");
+                selected: root.language == LanguageChoice.system;
+                clicked => {
+                    root.language-chosen(LanguageChoice.system);
+                }
+            }
+
+            // Each language is named in itself, so it can be found from either one.
+            ChoiceButton {
+                text: "Türkçe";
+                selected: root.language == LanguageChoice.turkish;
+                clicked => {
+                    root.language-chosen(LanguageChoice.turkish);
+                }
+            }
+
+            ChoiceButton {
+                text: "English";
+                selected: root.language == LanguageChoice.english;
+                clicked => {
+                    root.language-chosen(LanguageChoice.english);
+                }
             }
         }
 

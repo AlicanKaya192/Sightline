@@ -92,43 +92,43 @@ msgctxt "SchemaTable"
 msgid "Max"
 msgstr "En büyük"
 
-msgctxt "SchemaTable"
+msgctxt "Words"
 msgid "boolean"
 msgstr "mantıksal"
 
-msgctxt "SchemaTable"
+msgctxt "Words"
 msgid "integer"
 msgstr "tamsayı"
 
-msgctxt "SchemaTable"
+msgctxt "Words"
 msgid "float"
 msgstr "kayan noktalı"
 
-msgctxt "SchemaTable"
+msgctxt "Words"
 msgid "decimal"
 msgstr "ondalık"
 
-msgctxt "SchemaTable"
+msgctxt "Words"
 msgid "date"
 msgstr "tarih"
 
-msgctxt "SchemaTable"
+msgctxt "Words"
 msgid "time"
 msgstr "saat"
 
-msgctxt "SchemaTable"
+msgctxt "Words"
 msgid "date and time"
 msgstr "tarih ve saat"
 
-msgctxt "SchemaTable"
+msgctxt "Words"
 msgid "text"
 msgstr "metin"
 
-msgctxt "SchemaTable"
+msgctxt "Words"
 msgid "binary"
 msgstr "ikili"
 
-msgctxt "SchemaTable"
+msgctxt "Words"
 msgid "nested"
 msgstr "iç içe"
 
@@ -192,23 +192,23 @@ msgctxt "WarningList"
 msgid "sample"
 msgstr "örneklem"
 
-msgctxt "WarningList"
+msgctxt "Words"
 msgid "{0}: {1}% of the values are missing. Does an empty value mean something here, or is data missing?"
 msgstr "{0}: değerlerin %{1} kadarı boş. Boş değer burada bir anlam taşıyor mu, yoksa veri mi eksik?"
 
-msgctxt "WarningList"
+msgctxt "Words"
 msgid "{0}: every value is different. It is probably an ID column; do not use it as a model feature."
 msgstr "{0}: her değer farklı. Büyük ihtimalle bir kimlik sütunu; modele özellik olarak girmemeli."
 
-msgctxt "WarningList"
+msgctxt "Words"
 msgid "{0}: every value is \"{1}\". The column carries no information."
 msgstr "{0}: bütün değerler \"{1}\". Sütun bilgi taşımıyor."
 
-msgctxt "WarningList"
+msgctxt "Words"
 msgid "{0}: the distribution is strongly skewed (skewness {1})."
 msgstr "{0}: dağılım çok çarpık (çarpıklık {1})."
 
-msgctxt "WarningList"
+msgctxt "Words"
 msgid "{0}: dates run from {1} to {2}."
 msgstr "{0}: tarihler {1} ile {2} arasında."
 
@@ -232,35 +232,35 @@ msgctxt "AppWindow"
 msgid "Sightline: select a data or model file in Explorer and press Space"
 msgstr "Sightline: Gezgin'de bir veri ya da model dosyası seçip Space'e basın"
 
-msgctxt "WarningList"
+msgctxt "Words"
 msgid "The header describes a file of {0}, but the file is {1}. It may be cut short or damaged."
 msgstr "Başlık {0} büyüklüğünde bir dosya tarif ediyor, ama dosya {1}. Dosya yarım kalmış ya da bozulmuş olabilir."
 
-msgctxt "WarningList"
+msgctxt "Words"
 msgid "{0}: the stored bytes do not match the tensor's shape and type. The file may be damaged."
 msgstr "{0}: saklanan baytlar tensörün şekli ve türüyle uyuşmuyor. Dosya bozulmuş olabilir."
 
-msgctxt "WarningList"
+msgctxt "Words"
 msgid "Tensors whose weights are kept in separate files, which Sightline does not open: {0}. Their sizes come from the shapes."
 msgstr "Ağırlıkları ayrı dosyalarda duran tensörler: {0}. Sightline bu dosyaları açmaz; boyutları şekillerden hesaplanır."
 
-msgctxt "WarningList"
+msgctxt "Words"
 msgid "The array holds pickled Python objects. Sightline does not read them, because loading a pickle can run code."
 msgstr "Dizide pickle ile saklanmış Python nesneleri var. Sightline bunları okumaz, çünkü pickle açmak kod çalıştırabilir."
 
-msgctxt "WarningList"
+msgctxt "Words"
 msgid "No statistics for this type of values."
 msgstr "Bu türdeki değerler için istatistik yok."
 
-msgctxt "WarningList"
+msgctxt "Words"
 msgid "Loading a pickle in Python can run code. Open it only if you trust where it came from. Sightline only read its opcodes."
 msgstr "Pickle dosyasını Python'da açmak kod çalıştırabilir. Yalnızca kaynağına güveniyorsanız açın. Sightline yalnızca işlem kodlarını okudu."
 
-msgctxt "WarningList"
+msgctxt "Words"
 msgid "{0}: loading this file calls a function that can run commands or change files."
 msgstr "{0}: bu dosya açılınca komut çalıştırabilen ya da dosya değiştirebilen bir fonksiyon çağrılır."
 
-msgctxt "WarningList"
+msgctxt "Words"
 msgid "Reading stopped before the end of the file, so the lists may be incomplete."
 msgstr "Okuma dosyanın sonuna gelmeden durdu; listeler eksik olabilir."
 
@@ -509,8 +509,8 @@ msgid "Back"
 msgstr "Geri"
 
 msgctxt "AboutView"
-msgid "Free software under the MIT License. Copyright 2026 Alican Kaya."
-msgstr "MIT Lisansı ile özgür yazılım. Telif hakkı 2026 Alican Kaya."
+msgid "Free software under the GNU General Public License v3; Sightline's own code is also under the MIT License. Copyright 2026 Alican Kaya."
+msgstr "GNU Genel Kamu Lisansı v3 ile özgür yazılım; Sightline'ın kendi kodu ayrıca MIT Lisansı altındadır. Telif hakkı 2026 Alican Kaya."
 
 msgctxt "AboutView"
 msgid "See inside your data files without opening them."
@@ -539,3 +539,115 @@ msgstr "Sightline kaldırıldı. Dosyalarınıza dokunulmadı."
 msgctxt "AppWindow"
 msgid "Sightline could not be removed completely."
 msgstr "Sightline tamamen kaldırılamadı."
+
+msgctxt "AboutView"
+msgid "Language"
+msgstr "Dil"
+
+msgctxt "AboutView"
+msgid "System language"
+msgstr "Sistem dili"
+
+msgctxt "CopyButton"
+msgid "Copy summary"
+msgstr "Özeti kopyala"
+
+msgctxt "CopyButton"
+msgid "Summary copied"
+msgstr "Özet kopyalandı"
+
+msgctxt "CopyButton"
+msgid "Could not copy the summary"
+msgstr "Özet kopyalanamadı"
+
+msgctxt "FileHeader"
+msgid "sheet {} of {}"
+msgstr "sayfa {} / {}"
+
+msgctxt "Words"
+msgid "Rows"
+msgstr "Satır"
+
+msgctxt "Words"
+msgid "Columns"
+msgstr "Sütun"
+
+msgctxt "Words"
+msgid "Size"
+msgstr "Boyut"
+
+msgctxt "Words"
+msgid "Schema"
+msgstr "Şema"
+
+msgctxt "Words"
+msgid "Warnings"
+msgstr "Uyarılar"
+
+msgctxt "Words"
+msgid "missing"
+msgstr "boş"
+
+msgctxt "Words"
+msgid "distinct values"
+msgstr "farklı değer"
+
+msgctxt "Words"
+msgid "Parameters"
+msgstr "Parametre"
+
+msgctxt "Words"
+msgid "Tensors"
+msgstr "Tensör"
+
+msgctxt "Words"
+msgid "Parameters by type"
+msgstr "Türe göre parametreler"
+
+msgctxt "Words"
+msgid "Shape"
+msgstr "Şekil"
+
+msgctxt "Words"
+msgid "Type"
+msgstr "Tür"
+
+msgctxt "Words"
+msgid "Min"
+msgstr "En küçük"
+
+msgctxt "Words"
+msgid "Max"
+msgstr "En büyük"
+
+msgctxt "Words"
+msgid "NaN values"
+msgstr "NaN değer"
+
+msgctxt "Words"
+msgid "Infinite values"
+msgstr "Sonsuz değer"
+
+msgctxt "Words"
+msgid "Protocol"
+msgstr "Protokol"
+
+msgctxt "Words"
+msgid "Imports"
+msgstr "İçe aktarmalar"
+
+msgctxt "Words"
+msgid "Calls"
+msgstr "Çağrı"
+
+msgctxt "Words"
+msgid "dangerous"
+msgstr "tehlikeli"
+
+msgctxt "Words"
+msgid "at least {}"
+msgstr "en az {}"
+
+msgctxt "Words"
+msgid "{}%"
+msgstr "%{}"

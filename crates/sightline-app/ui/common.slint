@@ -209,57 +209,71 @@ export component Pill inherits Rectangle {
     }
 }
 
-export component WarningList inherits ScrollView {
-    in property <[WarningRow]> warnings;
+export enum ColumnKind { boolean, integer, float, decimal, date, time, date-time, text, binary, nested }
 
-    VerticalLayout {
-        alignment: start;
-        padding: 20px;
-        spacing: 14px;
+// Text that both the window and the copied summary use, so the two always match.
+export global Words {
+    out property <string> rows: @tr("Rows");
+    out property <string> columns: @tr("Columns");
+    out property <string> size: @tr("Size");
+    out property <string> schema: @tr("Schema");
+    out property <string> warnings: @tr("Warnings");
+    out property <string> missing: @tr("missing");
+    out property <string> distinct: @tr("distinct values");
+    out property <string> parameters: @tr("Parameters");
+    out property <string> tensors: @tr("Tensors");
+    out property <string> parameters-by-type: @tr("Parameters by type");
+    out property <string> shape: @tr("Shape");
+    out property <string> dtype: @tr("Type");
+    out property <string> min: @tr("Min");
+    out property <string> max: @tr("Max");
+    out property <string> nan: @tr("NaN values");
+    out property <string> infinite: @tr("Infinite values");
+    out property <string> protocol: @tr("Protocol");
+    out property <string> imports: @tr("Imports");
+    out property <string> calls: @tr("Calls");
+    out property <string> dangerous: @tr("dangerous");
 
-        if root.warnings.length == 0: Text {
-            text: @tr("No warnings for this file.");
-            color: Theme.text-muted;
-        }
-
-        for warning in root.warnings: HorizontalLayout {
-            spacing: 10px;
-
-            VerticalLayout {
-                alignment: start;
-                width: 64px;
-
-                Pill {
-                    text: root.is-caution(warning.kind) ? @tr("caution") : @tr("note");
-                    caution: root.is-caution(warning.kind);
-                }
-            }
-
-            Text {
-                text: root.message(warning);
-                color: Theme.text;
-                horizontal-stretch: 1;
-                wrap: word-wrap;
-            }
-
-            if warning.from-sample: VerticalLayout {
-                alignment: start;
-
-                SampleChip {
-                    text: @tr("sample");
-                }
-            }
-        }
+    public pure function at-least(count: string) -> string {
+        return @tr("at least {}", count);
     }
 
-    pure function is-caution(kind: WarningKind) -> bool {
-        return kind == WarningKind.high-nulls || kind == WarningKind.single-value
-            || kind == WarningKind.size-mismatch || kind == WarningKind.bad-offsets
-            || kind == WarningKind.pickle-inside || kind == WarningKind.runs-code
-            || kind == WarningKind.dangerous-import || kind == WarningKind.stopped-early;
+    public pure function percent(value: string) -> string {
+        return @tr("{}%", value);
     }
 
-    pure function message(warning: WarningRow) -> string {
+    public pure function kind(kind: ColumnKind) -> string {
+        if kind == ColumnKind.boolean {
+            return @tr("boolean");
+        }
+        if kind == ColumnKind.integer {
+            return @tr("integer");
+        }
+        if kind == ColumnKind.float {
+            return @tr("float");
+        }
+        if kind == ColumnKind.decimal {
+            return @tr("decimal");
+        }
+        if kind == ColumnKind.date {
+            return @tr("date");
+        }
+        if kind == ColumnKind.time {
+            return @tr("time");
+        }
+        if kind == ColumnKind.date-time {
+            return @tr("date and time");
+        }
+        if kind == ColumnKind.text {
+            return @tr("text");
+        }
+        if kind == ColumnKind.binary {
+            return @tr("binary");
+        }
+        return @tr("nested");
+    }
+
+    public pure function warning(warning: WarningRow) -> string {
         if warning.kind == WarningKind.high-nulls {
             return @tr("{0}: {1}% of the values are missing. Does an empty value mean something here, or is data missing?", warning.column, warning.first);
         }
@@ -297,6 +311,113 @@ export component WarningList inherits ScrollView {
             return @tr("Reading stopped before the end of the file, so the lists may be incomplete.");
         }
         return @tr("{0}: dates run from {1} to {2}.", warning.column, warning.first, warning.second);
+    }
+}
+
+export enum CopyState { idle, copied, failed }
+
+// Shared by every file view, so the button needs no wiring through each of them.
+export global Copying {
+    in-out property <CopyState> state;
+    callback copy-summary();
+}
+
+export component CopyButton inherits HorizontalLayout {
+    spacing: 8px;
+    alignment: end;
+
+    if Copying.state == CopyState.copied: Text {
+        text: @tr("Summary copied");
+        color: Theme.text-muted;
+        font-size: 12px;
+        vertical-alignment: center;
+    }
+    if Copying.state == CopyState.failed: Text {
+        text: @tr("Could not copy the summary");
+        color: Theme.bad;
+        font-size: 12px;
+        vertical-alignment: center;
+    }
+
+    Rectangle {
+        accessible-role: button;
+        accessible-label: @tr("Copy summary");
+        background: area.has-hover ? Theme.accent-soft : Theme.surface-raised;
+        border-radius: 4px;
+        border-width: 1px;
+        border-color: Theme.line;
+
+        HorizontalLayout {
+            padding-left: 10px;
+            padding-right: 10px;
+            padding-top: 4px;
+            padding-bottom: 4px;
+
+            Text {
+                text: @tr("Copy summary");
+                color: Theme.text;
+                font-size: 13px;
+                vertical-alignment: center;
+            }
+        }
+
+        area := TouchArea {
+            mouse-cursor: pointer;
+            clicked => {
+                Copying.copy-summary();
+            }
+        }
+    }
+}
+
+export component WarningList inherits ScrollView {
+    in property <[WarningRow]> warnings;
+
+    VerticalLayout {
+        alignment: start;
+        padding: 20px;
+        spacing: 14px;
+
+        if root.warnings.length == 0: Text {
+            text: @tr("No warnings for this file.");
+            color: Theme.text-muted;
+        }
+
+        for warning in root.warnings: HorizontalLayout {
+            spacing: 10px;
+
+            VerticalLayout {
+                alignment: start;
+                width: 64px;
+
+                Pill {
+                    text: root.is-caution(warning.kind) ? @tr("caution") : @tr("note");
+                    caution: root.is-caution(warning.kind);
+                }
+            }
+
+            Text {
+                text: Words.warning(warning);
+                color: Theme.text;
+                horizontal-stretch: 1;
+                wrap: word-wrap;
+            }
+
+            if warning.from-sample: VerticalLayout {
+                alignment: start;
+
+                SampleChip {
+                    text: @tr("sample");
+                }
+            }
+        }
+    }
+
+    pure function is-caution(kind: WarningKind) -> bool {
+        return kind == WarningKind.high-nulls || kind == WarningKind.single-value
+            || kind == WarningKind.size-mismatch || kind == WarningKind.bad-offsets
+            || kind == WarningKind.pickle-inside || kind == WarningKind.runs-code
+            || kind == WarningKind.dangerous-import || kind == WarningKind.stopped-early;
     }
 }
 

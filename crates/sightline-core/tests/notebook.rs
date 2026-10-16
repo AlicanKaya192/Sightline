@@ -116,6 +116,21 @@ fn parquet_code_reads_with_pandas() {
 }
 
 #[test]
+fn excel_code_reads_the_summarized_sheet_with_pandas() {
+    let code = code(
+        r"C:\data\sales.xlsx",
+        &table(TableFormat::Excel {
+            sheets: vec!["Satışlar".to_string(), "Notes".to_string()],
+        }),
+    );
+
+    assert!(
+        code.contains(r#"pd.read_excel("C:\\data\\sales.xlsx", sheet_name="Satışlar")"#),
+        "{code}"
+    );
+}
+
+#[test]
 fn the_path_is_a_correctly_escaped_python_string() {
     let path = r"C:\Veri\şehir'ler\a b.csv";
 

@@ -1,20 +1,19 @@
 import { ScrollView, Spinner } from "std-widgets.slint";
-import { Fact, FormatBadge, HeaderCell, NotebookButton, NotebookState, SampleChip, TabBar, Theme, WarningList, WarningRow } from "common.slint";
+import { ColumnKind, CopyButton, Fact, FormatBadge, HeaderCell, NotebookButton, NotebookState, SampleChip, TabBar, Theme, WarningList, WarningRow, Words } from "common.slint";
 import { DtypeRow, IoRow, LayerRow, ModelInfo, ModelView, NamedValue, TensorRow } from "model-view.slint";
 import { ArrayInfo, ArrayView } from "array-view.slint";
-import { AboutView } from "about-view.slint";
+import { AboutView, LanguageChoice } from "about-view.slint";
 import { ImportRow, PickleInfo, PickleView } from "pickle-view.slint";
 
-export { NotebookState, WarningKind, WarningRow } from "common.slint";
+export { ColumnKind, CopyState, Copying, NotebookState, WarningKind, WarningRow, Words } from "common.slint";
+export { LanguageChoice } from "about-view.slint";
 export { DtypeRow, IoRow, LayerRow, ModelFormat, ModelInfo, NamedValue, SizeState, TensorRow } from "model-view.slint";
 export { ArrayInfo } from "array-view.slint";
 export { ImportRow, PickleInfo } from "pickle-view.slint";
 
 export enum ViewState { empty, loading, loaded, model, array, pickle, failed }
 
-export enum FileFormat { parquet, csv }
-
-export enum ColumnKind { boolean, integer, float, decimal, date, time, date-time, text, binary, nested }
+export enum FileFormat { parquet, csv, excel }
 
 export enum FailureKind { not-found, permission-denied, unsupported-format, unreadable-content, other }
 
@@ -25,6 +24,9 @@ export struct FileInfo {
     row-groups: int,
     delimiter: string,
     encoding: string,
+    // The summarized (first) sheet and how many the workbook has.
+    sheet: string,
+    sheets: int,
     rows: string,
     rows-exact: bool,
     columns: int,
@@ -101,6 +103,10 @@ component EmptyView inherits VerticalLayout {
 
                 FormatBadge {
                     text: "PARQUET";
+                }
+
+                FormatBadge {
+                    text: "EXCEL";
                 }
 
                 FormatBadge {
@@ -258,7 +264,7 @@ component FileHeader inherits Rectangle {
             spacing: 10px;
 
             FormatBadge {
-                text: root.info.format == FileFormat.parquet ? "PARQUET" : "CSV";
+                text: root.info.format == FileFormat.parquet ? "PARQUET" : root.info.format == FileFormat.excel ? "EXCEL" : "CSV";
             }
 
             Text {
@@ -270,6 +276,8 @@ component FileHeader inherits Rectangle {
                 overflow: elide;
                 horizontal-stretch: 1;
             }
+
+            CopyButton { }
 
             NotebookButton {
                 state: root.notebook-state;
@@ -308,6 +316,10 @@ component FileHeader inherits Rectangle {
             }
             if root.info.format == FileFormat.csv: Fact {
                 value: root.info.encoding;
+            }
+            if root.info.format == FileFormat.excel: Fact {
+                value: root.info.sheet;
+                label: @tr("sheet {} of {}", 1, root.info.sheets);
             }
             if root.info.sampled: VerticalLayout {
                 alignment: center;
@@ -486,7 +498,7 @@ component SchemaTable inherits ScrollView {
                 }
 
                 Text {
-                    text: root.kind-label(row.kind);
+                    text: Words.kind(row.kind);
                     color: Theme.text-muted;
                     width: root.type-width;
                     vertical-alignment: center;
@@ -540,37 +552,6 @@ component SchemaTable inherits ScrollView {
                 background: Theme.line;
             }
         }
-    }
-
-    pure function kind-label(kind: ColumnKind) -> string {
-        if kind == ColumnKind.boolean {
-            return @tr("boolean");
-        }
-        if kind == ColumnKind.integer {
-            return @tr("integer");
-        }
-        if kind == ColumnKind.float {
-            return @tr("float");
-        }
-        if kind == ColumnKind.decimal {
-            return @tr("decimal");
-        }
-        if kind == ColumnKind.date {
-            return @tr("date");
-        }
-        if kind == ColumnKind.time {
-            return @tr("time");
-        }
-        if kind == ColumnKind.date-time {
-            return @tr("date and time");
-        }
-        if kind == ColumnKind.text {
-            return @tr("text");
-        }
-        if kind == ColumnKind.binary {
-            return @tr("binary");
-        }
-        return @tr("nested");
     }
 }
 
@@ -701,6 +682,9 @@ export component AppWindow inherits Window {
     callback open-notebook;
     in property <string> version;
     in-out property <bool> about-open;
+    in-out property <LanguageChoice> language;
+    callback language-chosen(LanguageChoice);
+    callback close-window;
     // Read when the shell menu is registered, so the menu uses the app's translation.
     out property <string> menu-verb: @tr("Preview with Sightline");
     // Read by the number formatting, so numbers follow the window's language.
@@ -727,66 +711,104 @@ export component AppWindow inherits Window {
     min-width: 560px;
     min-height: 360px;
 
-    VerticalLayout {
-        if root.state == ViewState.empty: EmptyView {
-            drop-hover: root.drop-hover;
-            show-about => {
-                root.about-open = true;
+    forward-focus: keys;
+
+    // Esc closes the About screen, or else the window, as its close button does.
+    keys := FocusScope {
+        key-pressed(event) => {
+            if event.text != Key.Escape {
+                return reject;
+            }
+            if root.about-open {
+                root.about-open = false;
+            } else {
+                root.close-window();
+            }
+            return accept;
+        }
+
+        VerticalLayout {
+            if root.state == ViewState.empty: EmptyView {
+                drop-hover: root.drop-hover;
+                show-about => {
+                    root.about-open = true;
+                }
+            }
+            if root.state == ViewState.loading: LoadingView {
+                file-name: root.loading-name;
+            }
+            if root.state == ViewState.failed: FailureView {
+                failure: root.failure;
+            }
+            if root.state == ViewState.loaded: PreviewView {
+                info: root.info;
+                schema: root.schema;
+                head-titles: root.head-titles;
+                head-rows: root.head-rows;
+                histograms: root.histograms;
+                warnings: root.warnings;
+                notebook-state: root.notebook-state;
+                notebook-detail: root.notebook-detail;
+                open-notebook => {
+                    root.open-notebook();
+                }
+            }
+            if root.state == ViewState.model: ModelView {
+                info: root.model-info;
+                dtypes: root.dtype-rows;
+                metadata: root.metadata-rows;
+                io: root.io-rows;
+                operators: root.operator-rows;
+                layers: root.layer-rows;
+                tensors: root.tensor-rows;
+                warnings: root.warnings;
+                notebook-state: root.notebook-state;
+                notebook-detail: root.notebook-detail;
+                open-notebook => {
+                    root.open-notebook();
+                }
+            }
+            if root.state == ViewState.array: ArrayView {
+                info: root.array-info;
+                histogram: root.array-histogram;
+                warnings: root.warnings;
+                notebook-state: root.notebook-state;
+                notebook-detail: root.notebook-detail;
+                open-notebook => {
+                    root.open-notebook();
+                }
+            }
+            if root.state == ViewState.pickle: PickleView {
+                info: root.pickle-info;
+                imports: root.import-rows;
+                warnings: root.warnings;
+                notebook-state: root.notebook-state;
+                notebook-detail: root.notebook-detail;
+                open-notebook => {
+                    root.open-notebook();
+                }
             }
         }
-        if root.state == ViewState.loading: LoadingView {
-            file-name: root.loading-name;
-        }
-        if root.state == ViewState.failed: FailureView {
-            failure: root.failure;
-        }
-        if root.state == ViewState.loaded: PreviewView {
-            info: root.info;
-            schema: root.schema;
-            head-titles: root.head-titles;
-            head-rows: root.head-rows;
-            histograms: root.histograms;
-            warnings: root.warnings;
-            notebook-state: root.notebook-state;
-            notebook-detail: root.notebook-detail;
-            open-notebook => {
-                root.open-notebook();
+
+        if root.about-open: AboutView {
+            width: 100%;
+            height: 100%;
+            version: root.version;
+            language: root.language;
+            language-chosen(choice) => {
+                root.language-chosen(choice);
+            }
+            close => {
+                root.about-open = false;
             }
         }
-        if root.state == ViewState.model: ModelView {
-            info: root.model-info;
-            dtypes: root.dtype-rows;
-            metadata: root.metadata-rows;
-            io: root.io-rows;
-            operators: root.operator-rows;
-            layers: root.layer-rows;
-            tensors: root.tensor-rows;
-            warnings: root.warnings;
-            notebook-state: root.notebook-state;
-            notebook-detail: root.notebook-detail;
-            open-notebook => {
-                root.open-notebook();
-            }
-        }
-        if root.state == ViewState.array: ArrayView {
-            info: root.array-info;
-            histogram: root.array-histogram;
-            warnings: root.warnings;
-            notebook-state: root.notebook-state;
-            notebook-detail: root.notebook-detail;
-            open-notebook => {
-                root.open-notebook();
-            }
-        }
-        if root.state == ViewState.pickle: PickleView {
-            info: root.pickle-info;
-            imports: root.import-rows;
-            warnings: root.warnings;
-            notebook-state: root.notebook-state;
-            notebook-detail: root.notebook-detail;
-            open-notebook => {
-                root.open-notebook();
-            }
+
+        // Outline while a file is dragged over a window that already shows one.
+        if root.drop-hover && root.state != ViewState.empty: Rectangle {
+            width: 100%;
+            height: 100%;
+            border-width: 2px;
+            border-color: Theme.accent;
         }
     }
 
@@ -804,22 +826,5 @@ export component AppWindow inherits Window {
             return root.pickle-info.name;
         }
         return "";
-    }
-
-    if root.about-open: AboutView {
-        width: 100%;
-        height: 100%;
-        version: root.version;
-        close => {
-            root.about-open = false;
-        }
-    }
-
-    // Outline while a file is dragged over a window that already shows one.
-    if root.drop-hover && root.state != ViewState.empty: Rectangle {
-        width: 100%;
-        height: 100%;
-        border-width: 2px;
-        border-color: Theme.accent;
     }
 }

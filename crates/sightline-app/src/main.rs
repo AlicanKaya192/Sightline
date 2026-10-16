@@ -3,12 +3,14 @@
 mod array_view;
 mod autostart;
 mod cli;
+mod clipboard;
 mod explorer;
 mod file_view;
 mod hook;
 mod icon;
 mod install;
 mod known_folder;
+mod language;
 mod model_view;
 mod notebook_file;
 mod pickle_view;
@@ -16,10 +18,12 @@ mod preview;
 mod registry;
 mod resident;
 mod shell_menu;
+mod summary_text;
 mod tray;
 mod trigger;
 mod view;
 
+use slint::ComponentHandle;
 use slint::winit_030::{EventResult, WinitWindowAccessor, winit::event::WindowEvent};
 
 use cli::{MenuChange, Setup};
@@ -31,9 +35,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let options = cli::parse_args(std::env::args().skip(1))?;
     let window = AppWindow::new()?;
     window.set_version(env!("CARGO_PKG_VERSION").into());
-    // Slint picks the system language on its own; the flag only overrides it.
-    if let Some(language) = &options.language {
-        slint::select_bundled_translation(language)?;
+    let saved_language = language::saved();
+    window.set_language(saved_language);
+    // Slint picks the system language on its own; a saved choice or the flag overrides it.
+    match &options.language {
+        Some(language) => slint::select_bundled_translation(language)?,
+        None if saved_language != LanguageChoice::System => language::select(saved_language)?,
+        None => {}
     }
     if let Some(change) = options.menu {
         return change_menu(change, &window);
@@ -46,6 +54,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     open_dropped_files(&window, previewer.clone());
     let notebook_previewer = previewer.clone();
     window.on_open_notebook(move || notebook_previewer.open_notebook());
+    close_on_escape(&window);
+    copy_summary_on_request(&window);
+    let language_previewer = previewer.clone();
+    let app = window.as_weak();
+    window.on_language_chosen(move |choice| {
+        if let Some(window) = app.upgrade() {
+            change_language(&window, &language_previewer, choice);
+        }
+    });
     if let Some(file) = options.file {
         previewer.open(file);
     }
@@ -54,6 +71,47 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     window.run()?;
     Ok(())
+}
+
+/// Applies a language picked on the About screen and keeps it for the next start.
+pub fn change_language(window: &AppWindow, previewer: &Previewer, choice: LanguageChoice) {
+    window.set_language(choice);
+    // Failures are not reported: the window still switches; only the next start may not.
+    let _ = language::save(choice);
+    // Fails only for a language that is not bundled, and every choice is.
+    let _ = language::select(choice);
+    // Numbers are formatted when a file is shown, so the shown file is shown again.
+    previewer.refresh();
+    let _ = shell_menu::relabel(&window.get_menu_verb());
+}
+
+/// "Copy summary" puts the shown summary on the clipboard; the button says how it went.
+fn copy_summary_on_request(window: &AppWindow) {
+    let app = window.as_weak();
+    window.global::<Copying>().on_copy_summary(move || {
+        let Some(window) = app.upgrade() else {
+            return;
+        };
+        let Some(text) = summary_text::shown(&window) else {
+            return;
+        };
+        let state = match clipboard::set_text(&text) {
+            Ok(()) => CopyState::Copied,
+            Err(_) => CopyState::Failed,
+        };
+        window.global::<Copying>().set_state(state);
+    });
+}
+
+/// Hiding is what the close button does: the program ends, or in tray mode it keeps waiting.
+fn close_on_escape(window: &AppWindow) {
+    let app = window.as_weak();
+    window.on_close_window(move || {
+        if let Some(window) = app.upgrade() {
+            // Nothing to report to when it fails; the window then simply stays open.
+            let _ = window.hide();
+        }
+    });
 }
 
 /// Slint does not pass files dragged from Explorer on, so they are taken from winit.

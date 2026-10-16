@@ -211,7 +211,7 @@ pub struct TableSummary {
     pub sampled_rows: Option<u64>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TableFormat {
     Parquet {
         row_groups: usize,
@@ -219,6 +219,10 @@ pub enum TableFormat {
     Csv {
         delimiter: u8,
         encoding: TextEncoding,
+    },
+    /// Sheet names in workbook order; the first one is summarized.
+    Excel {
+        sheets: Vec<String>,
     },
 }
 

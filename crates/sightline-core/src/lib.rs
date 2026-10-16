@@ -12,7 +12,7 @@ pub use layers::{LayerNode, ParameterTotals};
 pub use profile::profile;
 pub use readers::{
     CsvReader, EXTENSIONS, Limits, NpyReader, OnnxReader, ParquetReader, PickleReader, ReadError,
-    Reader, SafetensorsReader, summarize,
+    Reader, SafetensorsReader, XlsxReader, summarize,
 };
 pub use summary::{
     ArrayStats, ArraySummary, Basis, Bounds, ColumnProfile, ColumnSummary, ColumnType, DType,

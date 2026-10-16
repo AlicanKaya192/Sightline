@@ -2,7 +2,7 @@
 
 Veri dosyalarının içini açmadan gör.
 
-Sightline, veri bilimciler ve ML mühendisleri için küçük bir Windows uygulaması. Gezgin'de bir CSV, Parquet, NPY, safetensors, ONNX ya da pickle dosyası seçip Space'e bastığında içinde ne olduğu bir pencerede görünür: tablonun şeması, satır sayısı, boş değerleri ve dağılımları; modelin katmanları, tensör şekilleri ve parametre sayısı; dizinin şekli ve değer aralığı; pickle'ı açsaydın hangi fonksiyonları çağıracağı. Python gerekmez, not defteri açmak gerekmez, 1 GB'lık dosyanın yüklenmesini beklemek gerekmez.
+Sightline, veri bilimciler ve ML mühendisleri için küçük bir Windows uygulaması. Gezgin'de bir CSV, Parquet, Excel, NPY, safetensors, ONNX ya da pickle dosyası seçip Space'e bastığında içinde ne olduğu bir pencerede görünür: tablonun şeması, satır sayısı, boş değerleri ve dağılımları; modelin katmanları, tensör şekilleri ve parametre sayısı; dizinin şekli ve değer aralığı; pickle'ı açsaydın hangi fonksiyonları çağıracağı. Python gerekmez, not defteri açmak gerekmez, 1 GB'lık dosyanın yüklenmesini beklemek gerekmez.
 
 [English](README.md)
 
@@ -14,6 +14,7 @@ Sightline, veri bilimciler ve ML mühendisleri için küçük bir Windows uygula
 |---|---|
 | CSV | Ayırıcı ve kodlama (UTF-8 ya da Windows-1254), sütun türleri, boş değerler, benzersiz değer sayısı, histogram ya da en sık değerler, en küçük ve en büyük değer, ilk satırlar, uyarılar |
 | Parquet | Aynısı; satır sayısı ve istatistikler dosyanın üst verisinden, örneklem bütün dosyaya yayılmış |
+| Excel (`.xlsx`, `.xlsm`) | İlk sayfa için aynısı, bütün sayfaların adlarıyla; tarihler tarih olarak, formül sonuçları Excel'in kaydettiği gibi (formüller hiç hesaplanmaz, makrolar hiç okunmaz) |
 | safetensors | Her tensörün türü ve şekli, türe göre toplam parametre, katman ağacı, üst veri ve dosyanın başlığın söylediği uzunlukta olup olmadığı |
 | ONNX | IR ve işlem kümesi sürümleri, üreten araç, şekilleriyle girdiler ve çıktılar, işlem sayıları, başlatıcılar ve parametreler |
 | NPY | Şekil, tür, bellek sırası, en küçük, en büyük, NaN ve sonsuz sayısı, histogram (büyük dizilerde örneklemden) |
@@ -61,7 +62,8 @@ Kaldırmak için Ayarlar > Uygulamalar'dan Sightline'ı kaldır ya da `sightline
 
 - Dosyayı pencereye **sürükleyip bırak** ya da Gezgin'de **sağ tıklayıp** "Sightline ile önizle"yi seç.
 - **Gezgin'de Space:** Sightline'ı `sightline-app.exe --tray` ile başlat. Bildirim alanında bekler; Gezgin'de desteklenen bir dosya seçip Space'e bas. Tepsi menüsünden Windows açılışında başlaması açılabilir (varsayılan kapalı).
-- **Dil:** Pencere Windows'un dilini izler (Türkçe ya da İngilizce); `--lang tr` ya da `--lang en` ile seçilir.
+- **Özeti kopyala**, özeti pencerenin dilinde düz metin olarak panoya koyar. **Esc** pencereyi kapatır.
+- **Dil:** Pencere Windows'un dilini izler (Türkçe ya da İngilizce). Hakkında ekranından biri seçilebilir ve Sightline seçimi hatırlar; `--lang tr` ya da `--lang en` bir açılış için onu geçersiz kılar.
 - **Komut satırı:** `sightline.exe ozet <dosya>` aynı özeti metin olarak yazdırır.
 
 ![Bir NPY dizisi: şekil, tür, en küçük, en büyük, NaN sayısı ve histogram](docs/screenshots/array-tr.png)
@@ -83,11 +85,12 @@ cargo test --workspace
 
 ## Sınırlar
 
-- PyTorch `.pt` ve `.pth`, `.npz`, parçalı safetensors, GGUF ve Excel dosyaları henüz desteklenmiyor.
+- PyTorch `.pt` ve `.pth`, `.npz`, parçalı safetensors, GGUF, eski `.xls` ve `.ods` dosyaları henüz desteklenmiyor.
+- Excel çalışma kitabının yalnızca ilk sayfası özetlenir; bir sayfa açılmış hâliyle 64 MB XML'e kadar okunur, daha uzun sayfalarda satır sayısı "en az" diye verilir.
 - ONNX parametre sayısı yalnızca başlatıcıları sayar. ONNX'e aktarılan bir model safetensors sürümünden farklı sayı verebilir: all-MiniLM-L6-v2'de dışa aktarım kullanılmayan pooler katmanını ve `position_ids` tamponunu (148.352 değer) içermiyor.
 - Gezgin önizleme bölmesi (Alt+P) ve iki dosyanın şemasını karşılaştırma sonraki sürüm için planlandı.
 - `.exe` dosyasının kendisi Gezgin'de Windows'un varsayılan simgesiyle görünür; pencere, tepsi, Başlat menüsü ve Ayarlar Sightline'ın simgesini kullanır.
 
 ## Lisans
 
-MIT, bkz. [LICENSE](LICENSE). Arayüz, Slint'in royalty-free lisansıyla kullanıldı; Hakkında ekranında bu lisansın istediği Slint rozeti gösterilir.
+Sightline'ın kendi kaynak kodu MIT Lisansı altındadır, bkz. [LICENSE](LICENSE). Pencere, Slint arayüz kütüphanesini GNU Genel Kamu Lisansı v3 ile kullanır; bu yüzden dağıtılan `sightline-app.exe` GPL v3 altındadır, bkz. [LICENSE-GPL-3.0.txt](LICENSE-GPL-3.0.txt). Komut satırı aracı `sightline.exe` Slint kullanmaz ve yalnızca MIT Lisansı altındadır.

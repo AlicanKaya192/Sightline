@@ -3,7 +3,7 @@ mod common;
 use common::{table, write_bytes};
 use sightline_core::{
     CsvReader, EXTENSIONS, Limits, NpyReader, OnnxReader, ParquetReader, PickleReader, ReadError,
-    Reader, SafetensorsReader, TableFormat, summarize,
+    Reader, SafetensorsReader, TableFormat, XlsxReader, summarize,
 };
 
 #[test]
@@ -29,9 +29,10 @@ fn rejects_an_unknown_file_type() {
 
 #[test]
 fn every_listed_extension_has_a_reader() {
-    let readers: [&dyn Reader; 6] = [
+    let readers: [&dyn Reader; 7] = [
         &ParquetReader,
         &CsvReader,
+        &XlsxReader,
         &SafetensorsReader,
         &OnnxReader,
         &NpyReader,

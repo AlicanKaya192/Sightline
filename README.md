@@ -2,7 +2,7 @@
 
 See inside your data files without opening them.
 
-Sightline is a small Windows app for data scientists and ML engineers. Select a CSV, Parquet, NPY, safetensors, ONNX or pickle file in Explorer, press Space, and a window shows what is inside: the schema, row count, missing values and distributions of a table; the layers, tensor shapes and parameter count of a model; the shape and value range of an array; the functions a pickle would call if you loaded it. No Python, no notebook, no waiting for a 1 GB file to load.
+Sightline is a small Windows app for data scientists and ML engineers. Select a CSV, Parquet, Excel, NPY, safetensors, ONNX or pickle file in Explorer, press Space, and a window shows what is inside: the schema, row count, missing values and distributions of a table; the layers, tensor shapes and parameter count of a model; the shape and value range of an array; the functions a pickle would call if you loaded it. No Python, no notebook, no waiting for a 1 GB file to load.
 
 [Türkçe](README.tr.md)
 
@@ -14,6 +14,7 @@ Sightline is a small Windows app for data scientists and ML engineers. Select a 
 |---|---|
 | CSV | Delimiter and encoding (UTF-8 or Windows-1254), column types, missing values, distinct counts, histograms or most frequent values, min and max, first rows, warnings |
 | Parquet | The same, with the row count and statistics taken from the file footer; samples spread over the whole file |
+| Excel (`.xlsx`, `.xlsm`) | The same for the first sheet, with the names of all sheets; dates shown as dates, formula results as Excel saved them (formulas are never calculated, macros never read) |
 | safetensors | Every tensor with its type and shape, total parameters by type, a layer tree, metadata, and a check that the file is as long as its header says |
 | ONNX | IR and operator set versions, producer, inputs and outputs with their shapes, operator counts, initializers and parameters |
 | NPY | Shape, type, memory order, min, max, NaN and infinite counts, a histogram (sampled for large arrays) |
@@ -61,7 +62,8 @@ You can also run `sightline-app.exe` from any folder without installing it.
 
 - **Drag and drop** a file onto the window, or **right-click** it in Explorer and choose "Preview with Sightline".
 - **Space in Explorer:** start Sightline with `sightline-app.exe --tray`. It waits in the notification area; select a supported file in Explorer and press Space. The tray menu can start it with Windows (off by default).
-- **Language:** the window follows the Windows language (English or Turkish); `--lang en` or `--lang tr` chooses one.
+- **Copy summary** puts the summary on the clipboard as plain text, in the window's language. **Esc** closes the window.
+- **Language:** the window follows the Windows language (English or Turkish). The About screen lets you pick one, and Sightline remembers it; `--lang en` or `--lang tr` overrides it for one start.
 - **Command line:** `sightline.exe ozet <file>` prints the same summary as text.
 
 ![An NPY array: shape, type, min, max, NaN count and a histogram](docs/screenshots/array-en.png)
@@ -83,11 +85,12 @@ cargo test --workspace
 
 ## Limits
 
-- PyTorch `.pt` and `.pth` files, `.npz`, sharded safetensors, GGUF and Excel files are not supported yet.
+- PyTorch `.pt` and `.pth` files, `.npz`, sharded safetensors, GGUF, old `.xls` workbooks and `.ods` files are not supported yet.
+- Only the first sheet of an Excel workbook is summarized; a sheet is read up to 64 MB of unpacked XML, and longer sheets give "at least" row counts.
 - ONNX parameter counts include initializers only. A model exported to ONNX can differ from its safetensors version: in all-MiniLM-L6-v2 the export leaves out the unused pooler layer and the `position_ids` buffer (148,352 values).
 - The Explorer preview pane (Alt+P) and comparing the schemas of two files are planned for a later version.
 - The `.exe` file itself shows the default Windows icon in Explorer; the window, tray, Start menu and Settings use Sightline's icon.
 
 ## License
 
-MIT, see [LICENSE](LICENSE). The user interface is built with Slint under its royalty-free license; the About screen shows the Slint attribution it asks for.
+Sightline's own source code is under the MIT License, see [LICENSE](LICENSE). The window uses the Slint UI toolkit under the GNU General Public License v3, so `sightline-app.exe` as distributed is under the GPL v3, see [LICENSE-GPL-3.0.txt](LICENSE-GPL-3.0.txt). The command-line tool `sightline.exe` does not use Slint and is under the MIT License only.

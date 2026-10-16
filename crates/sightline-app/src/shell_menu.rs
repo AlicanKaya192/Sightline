@@ -21,6 +21,17 @@ pub fn register(exe: &Path, verb: &str) -> io::Result<()> {
     Ok(())
 }
 
+/// Renames the menu entries that exist, keeping the program they run; adds none.
+pub fn relabel(verb: &str) -> io::Result<()> {
+    for extension in EXTENSIONS {
+        let menu = menu_key(extension);
+        if registry::get_value(&menu, "MUIVerb").is_some() {
+            registry::set_value(&menu, "MUIVerb", verb)?;
+        }
+    }
+    Ok(())
+}
+
 /// Removes only the keys `register` creates; a missing key is not an error.
 pub fn unregister() -> io::Result<()> {
     for extension in EXTENSIONS {
@@ -66,6 +77,8 @@ mod tests {
             [
                 r"Software\Classes\SystemFileAssociations\.csv\shell\Sightline",
                 r"Software\Classes\SystemFileAssociations\.parquet\shell\Sightline",
+                r"Software\Classes\SystemFileAssociations\.xlsx\shell\Sightline",
+                r"Software\Classes\SystemFileAssociations\.xlsm\shell\Sightline",
                 r"Software\Classes\SystemFileAssociations\.safetensors\shell\Sightline",
                 r"Software\Classes\SystemFileAssociations\.onnx\shell\Sightline",
                 r"Software\Classes\SystemFileAssociations\.npy\shell\Sightline",

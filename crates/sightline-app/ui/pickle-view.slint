@@ -1,5 +1,5 @@
 import { ScrollView } from "std-widgets.slint";
-import { Fact, FormatBadge, HeaderCell, NotebookButton, NotebookState, Pill, TabBar, Theme, WarningList, WarningRow } from "common.slint";
+import { CopyButton, Fact, FormatBadge, HeaderCell, NotebookButton, NotebookState, Pill, TabBar, Theme, WarningList, WarningRow } from "common.slint";
 
 export struct PickleInfo {
     name: string,
@@ -128,6 +128,8 @@ export component PickleView inherits VerticalLayout {
                     overflow: elide;
                     horizontal-stretch: 1;
                 }
+
+                CopyButton { }
 
                 NotebookButton {
                     state: root.notebook-state;

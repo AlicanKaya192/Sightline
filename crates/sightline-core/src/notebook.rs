@@ -43,7 +43,7 @@ pub fn notebook(path: &Path, summary: &Summary) -> String {
 /// Python code reading the file whose path is the Python string literal `path`.
 fn code(path: &str, summary: &Summary) -> String {
     match summary {
-        Summary::Table(table) => match table.format {
+        Summary::Table(table) => match &table.format {
             TableFormat::Parquet { .. } => {
                 format!("import pandas as pd\n\ndf = pd.read_parquet({path})\ndf.head(20)")
             }
@@ -51,13 +51,22 @@ fn code(path: &str, summary: &Summary) -> String {
                 delimiter,
                 encoding,
             } => {
-                let separator = python_string(&char::from(delimiter).to_string());
+                let separator = python_string(&char::from(*delimiter).to_string());
                 let encoding = match encoding {
                     TextEncoding::Utf8 => String::new(),
                     TextEncoding::Windows1254 => ", encoding=\"cp1254\"".to_string(),
                 };
                 format!(
                     "import pandas as pd\n\ndf = pd.read_csv({path}, sep={separator}{encoding})\ndf.head(20)"
+                )
+            }
+            TableFormat::Excel { sheets } => {
+                // pandas reads the first sheet when given 0, as Sightline does.
+                let sheet = sheets
+                    .first()
+                    .map_or_else(|| "0".to_string(), |name| python_string(name));
+                format!(
+                    "import pandas as pd\n\ndf = pd.read_excel({path}, sheet_name={sheet})\ndf.head(20)"
                 )
             }
         },

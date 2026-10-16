@@ -15,7 +15,8 @@ use slint::{ComponentHandle, ModelRc, VecModel};
 
 use crate::view::NumberFormat;
 use crate::{
-    AppWindow, NotebookState, ViewState, array_view, model_view, notebook_file, pickle_view, view,
+    AppWindow, CopyState, Copying, NotebookState, ViewState, array_view, model_view, notebook_file,
+    pickle_view, view,
 };
 
 struct Loaded {
@@ -52,6 +53,7 @@ impl Previewer {
         if let Some(window) = self.window.upgrade() {
             window.set_loading_name(name.as_str().into());
             window.set_notebook_state(NotebookState::Idle);
+            window.global::<Copying>().set_state(CopyState::Idle);
             window.set_state(ViewState::Loading);
         }
         self.set_shown(None);
@@ -73,6 +75,19 @@ impl Previewer {
                 show(&window, &name, result);
             });
         });
+    }
+
+    /// Reads the shown file again, so its numbers follow a newly picked language.
+    pub fn refresh(&self) {
+        let path = self
+            .shown
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+            .map(|shown| shown.path.clone());
+        if let Some(path) = path {
+            self.open(path);
+        }
     }
 
     /// Writes a notebook for the shown file and opens it; the window says where it went.

@@ -49,6 +49,10 @@ fn format_text(format: &TableFormat) -> String {
             char::from(*delimiter),
             encoding_name(*encoding)
         ),
+        TableFormat::Excel { sheets } => match sheets.first() {
+            Some(first) => format!("Excel, sheet '{first}' of {}", sheets.len()),
+            None => "Excel".to_string(),
+        },
     }
 }
 
@@ -198,6 +202,15 @@ mod tests {
         text.lines()
             .find(|line| line.starts_with(start))
             .unwrap_or_else(|| panic!("no line starts with {start:?} in:\n{text}"))
+    }
+
+    #[test]
+    fn excel_format_names_the_summarized_sheet() {
+        let format = TableFormat::Excel {
+            sheets: vec!["Sales".into(), "Notes".into()],
+        };
+
+        assert_eq!(format_text(&format), "Excel, sheet 'Sales' of 2");
     }
 
     #[test]

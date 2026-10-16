@@ -90,18 +90,23 @@ pub fn file_info(
         ..FileInfo::default()
     };
     set_sampled(&mut info, summary.sampled_rows, format);
-    match summary.format {
+    match &summary.format {
         TableFormat::Parquet { row_groups } => {
             info.format = FileFormat::Parquet;
-            info.row_groups = to_int(row_groups);
+            info.row_groups = to_int(*row_groups);
         }
         TableFormat::Csv {
             delimiter,
             encoding,
         } => {
             info.format = FileFormat::Csv;
-            info.delimiter = char::from(delimiter).to_string().into();
-            info.encoding = encoding_name(encoding).into();
+            info.delimiter = char::from(*delimiter).to_string().into();
+            info.encoding = encoding_name(*encoding).into();
+        }
+        TableFormat::Excel { sheets } => {
+            info.format = FileFormat::Excel;
+            info.sheet = sheets.first().cloned().unwrap_or_default().into();
+            info.sheets = to_int(sheets.len());
         }
     }
     info
@@ -366,6 +371,22 @@ mod tests {
             kind,
             basis,
         }
+    }
+
+    #[test]
+    fn excel_info_names_the_summarized_sheet_and_counts_them() {
+        let summary = table(
+            TableFormat::Excel {
+                sheets: vec!["Satışlar".into(), "Notlar".into()],
+            },
+            RowCount::Exact(5),
+        );
+
+        let info = file_info("rapor.xlsx", 2048, &summary, &ENGLISH);
+
+        assert_eq!(info.format, FileFormat::Excel);
+        assert_eq!(info.sheet, "Satışlar");
+        assert_eq!(info.sheets, 2);
     }
 
     #[test]

@@ -1,5 +1,5 @@
 import { ScrollView } from "std-widgets.slint";
-import { Fact, FormatBadge, NotebookButton, NotebookState, SampleChip, TabBar, Theme, WarningList, WarningRow } from "common.slint";
+import { CopyButton, Fact, FormatBadge, NotebookButton, NotebookState, SampleChip, TabBar, Theme, WarningList, WarningRow } from "common.slint";
 
 export struct ArrayInfo {
     name: string,
@@ -124,6 +124,8 @@ export component ArrayView inherits VerticalLayout {
                     overflow: elide;
                     horizontal-stretch: 1;
                 }
+
+                CopyButton { }
 
                 NotebookButton {
                     state: root.notebook-state;

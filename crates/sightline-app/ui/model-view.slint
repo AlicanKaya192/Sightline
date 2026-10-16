@@ -1,5 +1,5 @@
 import { ScrollView } from "std-widgets.slint";
-import { Fact, FormatBadge, HeaderCell, NotebookButton, NotebookState, TabBar, Theme, WarningList, WarningRow } from "common.slint";
+import { CopyButton, Fact, FormatBadge, HeaderCell, NotebookButton, NotebookState, TabBar, Theme, WarningList, WarningRow } from "common.slint";
 
 export enum ModelFormat { safetensors, onnx }
 
@@ -118,6 +118,8 @@ component ModelHeader inherits Rectangle {
                 overflow: elide;
                 horizontal-stretch: 1;
             }
+
+            CopyButton { }
 
             NotebookButton {
                 state: root.notebook-state;

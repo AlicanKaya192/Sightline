@@ -46,7 +46,9 @@ impl Reader for CsvReader {
             Basis::Sample
         };
 
-        let columns = summarize_columns(&table.header, sample, delimiter, basis);
+        // Turkish and other European CSVs use `;` between fields and `,` in numbers.
+        let decimal_comma = delimiter == b';';
+        let columns = summarize_columns(&table.header, sample, decimal_comma, basis);
         Ok(Summary::Table(TableSummary {
             format: TableFormat::Csv {
                 delimiter,
@@ -172,7 +174,7 @@ fn row_values(record: &csv::StringRecord, columns: usize) -> Vec<Option<String>>
         .collect()
 }
 
-fn row_count(rows: usize, is_complete: bool) -> RowCount {
+pub(super) fn row_count(rows: usize, is_complete: bool) -> RowCount {
     if is_complete {
         RowCount::Exact(rows as u64)
     } else {
@@ -180,14 +182,13 @@ fn row_count(rows: usize, is_complete: bool) -> RowCount {
     }
 }
 
-fn summarize_columns(
+/// Types, missing values, bounds and profiles of text values, one column per header name.
+pub(super) fn summarize_columns(
     header: &[String],
     sample: &[Vec<Option<String>>],
-    delimiter: u8,
+    decimal_comma: bool,
     basis: Basis,
 ) -> Vec<ColumnSummary> {
-    // Turkish and other European CSVs use `;` between fields and `,` in numbers.
-    let decimal_comma = delimiter == b';';
     header
         .iter()
         .enumerate()

@@ -19,7 +19,7 @@ use windows::Win32::UI::Shell::{
 use windows::core::{HSTRING, Interface};
 
 use crate::cli::UNINSTALL_FLAG;
-use crate::{autostart, icon, known_folder, registry, shell_menu};
+use crate::{autostart, icon, known_folder, language, registry, shell_menu};
 
 const FOLDER_NAME: &str = "Sightline";
 const EXE_NAME: &str = "sightline-app.exe";
@@ -104,6 +104,7 @@ pub fn uninstall() -> io::Result<()> {
     autostart::set_enabled(&layout.exe, false)?;
     remove_if_present(&layout.shortcut)?;
     registry::delete_key(UNINSTALL_KEY)?;
+    registry::delete_key(language::SETTINGS_KEY)?;
     if same_file(&std::env::current_exe()?, &layout.exe) {
         Command::new("cmd.exe")
             .arg("/C")

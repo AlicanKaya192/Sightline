@@ -6,11 +6,13 @@ use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 use std::io;
 use std::ptr;
+use std::sync::{Arc, Mutex, PoisonError};
 
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::Shell::{
-    NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW, Shell_NotifyIconW,
+    NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW,
+    Shell_NotifyIconW,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyIcon, DestroyMenu,
@@ -26,6 +28,8 @@ use crate::{autostart, icon};
 pub const SPACE_PRESSED: u32 = WM_APP + 1;
 /// Message the notification icon sends on mouse events; `LPARAM` is the mouse message.
 const ICON_MESSAGE: u32 = WM_APP + 2;
+/// Message the main thread posts after it rewrote the shared text in a new language.
+pub const TEXT_CHANGED: u32 = WM_APP + 3;
 
 const ICON_ID: u32 = 1;
 const OPEN_ID: usize = 1;
@@ -44,6 +48,7 @@ pub enum TrayEvent {
 }
 
 /// Menu and tooltip text, already translated.
+#[derive(Clone)]
 pub struct TrayText {
     pub open: String,
     pub about: String,
@@ -57,6 +62,7 @@ enum Raw {
     Event(TrayEvent),
     MenuRequested,
     TaskbarRestarted,
+    TextChanged,
 }
 
 thread_local! {
@@ -69,13 +75,14 @@ thread_local! {
 /// Lives on the thread that created it, which must run a message loop.
 pub struct Tray {
     window: HWND,
-    text: TrayText,
+    /// Shared with the main thread, which changes it when the user picks another language.
+    text: Arc<Mutex<TrayText>>,
     /// Sightline's own icon; `None` falls back to the stock application icon.
     icon: Option<HICON>,
 }
 
 impl Tray {
-    pub fn create(text: TrayText) -> io::Result<Self> {
+    pub fn create(text: Arc<Mutex<TrayText>>) -> io::Result<Self> {
         let class = wide("SightlineTray");
         // SAFETY: `class` outlives the calls; `window_proc` matches `WNDPROC`.
         let window = unsafe {
@@ -136,6 +143,7 @@ impl Tray {
                 }
                 // Nothing else can be done when it fails; the program still runs without it.
                 Raw::TaskbarRestarted => _ = self.add_icon(),
+                Raw::TextChanged => _ = self.update_tip(),
             }
         }
         None
@@ -149,14 +157,38 @@ impl Tray {
             // SAFETY: a null instance with `IDI_APPLICATION` loads the stock application icon.
             unsafe { LoadIconW(ptr::null_mut(), IDI_APPLICATION) }
         });
-        let tip: Vec<u16> = self.text.tip.encode_utf16().collect();
-        let len = tip.len().min(data.szTip.len() - 1);
-        data.szTip[..len].copy_from_slice(&tip[..len]);
+        self.write_tip(&mut data);
         // SAFETY: `data` is a fully initialised `NOTIFYICONDATAW`.
         if unsafe { Shell_NotifyIconW(NIM_ADD, &data) } == 0 {
             return Err(io::Error::other("the notification icon could not be added"));
         }
         Ok(())
+    }
+
+    fn update_tip(&self) -> io::Result<()> {
+        let mut data = self.icon_data();
+        data.uFlags = NIF_TIP;
+        self.write_tip(&mut data);
+        // SAFETY: `data` is a fully initialised `NOTIFYICONDATAW`.
+        if unsafe { Shell_NotifyIconW(NIM_MODIFY, &data) } == 0 {
+            return Err(io::Error::other(
+                "the notification icon could not be changed",
+            ));
+        }
+        Ok(())
+    }
+
+    fn write_tip(&self, data: &mut NOTIFYICONDATAW) {
+        let tip: Vec<u16> = self.text().tip.encode_utf16().collect();
+        let len = tip.len().min(data.szTip.len() - 1);
+        data.szTip[..len].copy_from_slice(&tip[..len]);
+    }
+
+    fn text(&self) -> TrayText {
+        self.text
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 
     fn icon_data(&self) -> NOTIFYICONDATAW {
@@ -174,10 +206,11 @@ impl Tray {
         } else {
             0
         };
-        let open = wide(&self.text.open);
-        let about = wide(&self.text.about);
-        let start = wide(&self.text.start_with_windows);
-        let quit = wide(&self.text.quit);
+        let text = self.text();
+        let open = wide(&text.open);
+        let about = wide(&text.about);
+        let start = wide(&text.start_with_windows);
+        let quit = wide(&text.quit);
         // SAFETY: the menu is created, shown and destroyed here; the texts outlive it.
         let chosen = unsafe {
             let menu = CreatePopupMenu();
@@ -250,6 +283,7 @@ unsafe extern "system" fn window_proc(
             WM_RBUTTONUP => Some(Raw::MenuRequested),
             _ => None,
         },
+        TEXT_CHANGED => Some(Raw::TextChanged),
         // Lets another program close Sightline the normal way, as with any window.
         WM_CLOSE => Some(Raw::Event(TrayEvent::Quit)),
         _ if message == TASKBAR_CREATED.get() => Some(Raw::TaskbarRestarted),

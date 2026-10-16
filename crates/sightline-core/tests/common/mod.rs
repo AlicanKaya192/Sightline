@@ -3,6 +3,7 @@
 #![allow(dead_code)] // each test binary uses a different part of this module
 
 pub mod protobuf;
+pub mod xlsx;
 
 use std::fs::{self, File};
 use std::path::PathBuf;

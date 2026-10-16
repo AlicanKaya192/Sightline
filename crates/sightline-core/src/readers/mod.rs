@@ -8,6 +8,9 @@ mod pickle_inspect;
 mod protobuf;
 mod py_literal;
 mod safetensors;
+mod xlsx;
+mod xml;
+mod zip_archive;
 
 use std::fmt;
 use std::io;
@@ -21,11 +24,14 @@ pub use self::onnx::OnnxReader;
 pub use self::parquet::ParquetReader;
 pub use self::pickle_inspect::PickleReader;
 pub use self::safetensors::SafetensorsReader;
+pub use self::xlsx::XlsxReader;
 
 /// File name extensions the readers open, for the shell menu and the Space key.
-pub const EXTENSIONS: [&str; 7] = [
+pub const EXTENSIONS: [&str; 9] = [
     "csv",
     "parquet",
+    "xlsx",
+    "xlsm",
     "safetensors",
     "onnx",
     "npy",
@@ -120,9 +126,10 @@ impl From<::csv::Error> for ReadError {
 
 /// Summarizes `path` with the first reader that accepts its file name.
 pub fn summarize(path: &Path, limits: &Limits) -> Result<Summary, ReadError> {
-    let readers: [&dyn Reader; 6] = [
+    let readers: [&dyn Reader; 7] = [
         &ParquetReader,
         &CsvReader,
+        &XlsxReader,
         &SafetensorsReader,
         &OnnxReader,
         &NpyReader,

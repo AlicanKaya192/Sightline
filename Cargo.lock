@@ -4025,6 +4025,7 @@ version = "1.0.0"
 dependencies = [
  "csv",
  "encoding_rs",
+ "flate2",
  "parquet",
  "serde_json",
 ]
