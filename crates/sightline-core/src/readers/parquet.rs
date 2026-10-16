@@ -1,18 +1,22 @@
 //! Parquet: schema, row count and statistics come from the footer metadata.
-//! Rows are decoded only for the head and for columns without null counts.
+//! Rows are decoded for the head and for a sample that the profiles use. Null counts
+//! missing from the metadata come from column pages spread over the whole file.
 
 use std::fs::File;
 use std::num::NonZeroUsize;
+use std::ops::Range;
 use std::path::Path;
 use std::thread;
 
 use ::parquet::basic::{ConvertedType, LogicalType, Type as PhysicalType};
+use ::parquet::column::reader::{ColumnReader, ColumnReaderImpl, get_column_reader};
+use ::parquet::data_type::DataType;
 use ::parquet::errors::ParquetError;
 use ::parquet::file::metadata::ParquetMetaData;
 use ::parquet::file::reader::{FileReader, SerializedFileReader};
 use ::parquet::file::statistics::{Statistics, ValueStatistics};
 use ::parquet::record::{Field, Row};
-use ::parquet::schema::types::ColumnDescriptor;
+use ::parquet::schema::types::{ColumnDescriptor, SchemaDescriptor};
 
 use super::{Limits, ReadError, Reader, has_extension};
 use crate::insights::insights;
@@ -36,6 +40,7 @@ impl Reader for ParquetReader {
         let mut columns = columns_from_metadata(metadata, total_rows);
 
         let head = read_rows(&reader, limits.head_rows)?;
+        count_missing_nulls(path, metadata, &mut columns, limits.sample_rows as u64)?;
         let sample = read_sample(path, metadata.num_row_groups(), limits.sample_rows)?;
         fill_missing_nulls(&mut columns, &sample, total_rows);
         add_profiles(&mut columns, &sample, total_rows);
@@ -60,9 +65,8 @@ fn row_count(metadata: &ParquetMetaData) -> Result<u64, ReadError> {
         .map_err(|_| ParquetError::General(format!("negative row count: {rows}")).into())
 }
 
-/// One summary per top-level field. Nested fields get no statistics.
-fn columns_from_metadata(metadata: &ParquetMetaData, total_rows: u64) -> Vec<ColumnSummary> {
-    let schema = metadata.file_metadata().schema_descr();
+/// The leaf column of each top-level field; `None` for a nested field.
+fn top_level_leaves(schema: &SchemaDescriptor) -> Vec<Option<usize>> {
     let mut leaf_of_field = vec![None; schema.root_schema().get_fields().len()];
     for leaf in 0..schema.num_columns() {
         let field = schema.get_column_root_idx(leaf);
@@ -70,12 +74,17 @@ fn columns_from_metadata(metadata: &ParquetMetaData, total_rows: u64) -> Vec<Col
             leaf_of_field[field] = Some(leaf);
         }
     }
+    leaf_of_field
+}
 
+/// One summary per top-level field. Nested fields get no statistics.
+fn columns_from_metadata(metadata: &ParquetMetaData, total_rows: u64) -> Vec<ColumnSummary> {
+    let schema = metadata.file_metadata().schema_descr();
     schema
         .root_schema()
         .get_fields()
         .iter()
-        .zip(leaf_of_field)
+        .zip(top_level_leaves(schema))
         .map(|(field, leaf)| match leaf {
             Some(leaf) => primitive_column(metadata, leaf, total_rows),
             None => ColumnSummary {
@@ -287,35 +296,27 @@ fn read_rows(reader: &SerializedFileReader<File>, count: usize) -> Result<Vec<Ro
     Ok(rows)
 }
 
-/// The rows read from one row group, with the group's place in the sample.
-type SampledGroup = (usize, Vec<Row>);
-
-/// Up to `count` rows taken from row groups spread over the file, the same number from
-/// each, so the sample is not only the start of the file.
+/// Runs `job` for each of `0..jobs` on several threads; results come back in job order.
 ///
-/// Opening a row group decompresses its first pages, which is most of the time spent, so
-/// the groups are read on several threads. Each thread opens the file itself: clones of
-/// one `File` share a cursor. Rows come back in row group order, as if read one by one.
-fn read_sample(path: &Path, groups: usize, count: usize) -> Result<Vec<Row>, ReadError> {
-    let used = groups.min(count);
-    if used == 0 {
-        return Ok(Vec::new());
-    }
-    let per_group = count.div_ceil(used);
-    let indices: Vec<usize> = (0..used).map(|i| i * groups / used).collect();
+/// Opening a row group or a column chunk decompresses pages, which is most of the time
+/// spent. Each thread opens the file itself: clones of one `File` share a cursor.
+fn in_parallel<T: Send>(
+    path: &Path,
+    jobs: usize,
+    job: impl Fn(&SerializedFileReader<File>, usize) -> Result<T, ReadError> + Sync,
+) -> Result<Vec<T>, ReadError> {
     let workers = thread::available_parallelism()
         .map_or(1, NonZeroUsize::get)
-        .min(used);
-    let mut slots: Vec<Vec<Row>> = (0..used).map(|_| Vec::new()).collect();
-    let indices = &indices;
-    let results: Vec<Result<Vec<SampledGroup>, ReadError>> = thread::scope(|scope| {
+        .min(jobs);
+    let job = &job;
+    let results: Vec<Result<Vec<(usize, T)>, ReadError>> = thread::scope(|scope| {
         let handles: Vec<_> = (0..workers)
             .map(|worker| {
                 scope.spawn(move || {
                     let reader = SerializedFileReader::new(File::open(path)?)?;
-                    (worker..used)
+                    (worker..jobs)
                         .step_by(workers)
-                        .map(|slot| Ok((slot, read_group(&reader, indices[slot], per_group)?)))
+                        .map(|index| Ok((index, job(&reader, index)?)))
                         .collect()
                 })
             })
@@ -329,12 +330,28 @@ fn read_sample(path: &Path, groups: usize, count: usize) -> Result<Vec<Row>, Rea
             })
             .collect()
     });
+    let mut slots: Vec<Option<T>> = (0..jobs).map(|_| None).collect();
     for result in results {
-        for (slot, rows) in result? {
-            slots[slot] = rows;
+        for (index, value) in result? {
+            slots[index] = Some(value);
         }
     }
-    let mut rows: Vec<Row> = slots.into_iter().flatten().collect();
+    Ok(slots.into_iter().flatten().collect())
+}
+
+/// Up to `count` rows taken from row groups spread over the file, the same number from
+/// each, so the sample is not only the start of the file. Rows come back in row group
+/// order, as if read one by one.
+fn read_sample(path: &Path, groups: usize, count: usize) -> Result<Vec<Row>, ReadError> {
+    let used = groups.min(count);
+    if used == 0 {
+        return Ok(Vec::new());
+    }
+    let per_group = count.div_ceil(used);
+    let groups_read = in_parallel(path, used, |reader, slot| {
+        read_group(reader, slot * groups / used, per_group)
+    })?;
+    let mut rows: Vec<Row> = groups_read.into_iter().flatten().collect();
     rows.truncate(count);
     Ok(rows)
 }
@@ -350,6 +367,174 @@ fn read_group(
         .take(count)
         .collect::<Result<_, _>>()?;
     Ok(rows)
+}
+
+/// Windows that the null count reads. Many short windows find nulls that sit together,
+/// for example only in the last rows of a file.
+const NULL_SAMPLE_WINDOWS: u64 = 100;
+
+/// Counts nulls of flat columns whose metadata has no null count, in `count` rows read in
+/// windows from the first row of the file to the last. Pages between the windows are
+/// skipped without being decompressed.
+fn count_missing_nulls(
+    path: &Path,
+    metadata: &ParquetMetaData,
+    columns: &mut [ColumnSummary],
+    count: u64,
+) -> Result<(), ReadError> {
+    let schema = metadata.file_metadata().schema_descr();
+    let missing: Vec<(usize, usize)> = top_level_leaves(schema)
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, leaf)| Some((index, leaf?)))
+        .filter(|&(index, leaf)| {
+            columns[index].nulls.is_none() && schema.column(leaf).max_rep_level() == 0
+        })
+        .collect();
+    if missing.is_empty() {
+        return Ok(());
+    }
+    let total_rows = row_count(metadata)?;
+    let ranges = ranges_per_row_group(&sample_windows(total_rows, count), metadata);
+    let counts = in_parallel(path, missing.len(), |reader, job| {
+        nulls_in_ranges(reader, missing[job].1, &ranges)
+    })?;
+    for (&(index, _), (nulls, rows)) in missing.iter().zip(counts) {
+        columns[index].nulls = Some(NullCount {
+            count: nulls,
+            of_rows: rows,
+            basis: basis_of(rows, total_rows),
+        });
+    }
+    Ok(())
+}
+
+/// `count` rows of the file in evenly spread windows; the first window starts at the
+/// first row and the last one ends at the last row.
+fn sample_windows(total_rows: u64, count: u64) -> Vec<Range<u64>> {
+    if count >= total_rows {
+        return std::iter::once(0..total_rows).collect();
+    }
+    let windows = NULL_SAMPLE_WINDOWS.min(count);
+    let gaps = total_rows - count;
+    let mut rows_before = 0;
+    (0..windows)
+        .map(|window| {
+            let length = count / windows + u64::from(window < count % windows);
+            let gap = if windows > 1 {
+                window * gaps / (windows - 1)
+            } else {
+                0
+            };
+            let start = rows_before + gap;
+            rows_before += length;
+            start..start + length
+        })
+        .collect()
+}
+
+/// The windows cut at row group borders, as row ranges inside each row group.
+fn ranges_per_row_group(
+    windows: &[Range<u64>],
+    metadata: &ParquetMetaData,
+) -> Vec<Vec<Range<u64>>> {
+    let mut first_row = 0;
+    metadata
+        .row_groups()
+        .iter()
+        .map(|row_group| {
+            let end = first_row + u64::try_from(row_group.num_rows()).unwrap_or(0);
+            let inside = windows
+                .iter()
+                .filter(|window| window.start < end && window.end > first_row)
+                .map(|window| {
+                    window.start.max(first_row) - first_row..window.end.min(end) - first_row
+                })
+                .collect();
+            first_row = end;
+            inside
+        })
+        .collect()
+}
+
+/// Nulls and rows of one flat column in the given ranges of each row group.
+fn nulls_in_ranges(
+    reader: &SerializedFileReader<File>,
+    leaf: usize,
+    ranges: &[Vec<Range<u64>>],
+) -> Result<(u64, u64), ReadError> {
+    let descriptor = reader
+        .metadata()
+        .file_metadata()
+        .schema_descr()
+        .column(leaf);
+    let max_definition = descriptor.max_def_level();
+    let (mut nulls, mut rows) = (0, 0);
+    for (row_group, group_ranges) in ranges.iter().enumerate() {
+        if group_ranges.is_empty() {
+            continue;
+        }
+        let pages = reader
+            .get_row_group(row_group)?
+            .get_column_page_reader(leaf)?;
+        let (group_nulls, group_rows) = match get_column_reader(descriptor.clone(), pages) {
+            ColumnReader::BoolColumnReader(column) => {
+                nulls_in(column, group_ranges, max_definition)
+            }
+            ColumnReader::Int32ColumnReader(column) => {
+                nulls_in(column, group_ranges, max_definition)
+            }
+            ColumnReader::Int64ColumnReader(column) => {
+                nulls_in(column, group_ranges, max_definition)
+            }
+            ColumnReader::Int96ColumnReader(column) => {
+                nulls_in(column, group_ranges, max_definition)
+            }
+            ColumnReader::FloatColumnReader(column) => {
+                nulls_in(column, group_ranges, max_definition)
+            }
+            ColumnReader::DoubleColumnReader(column) => {
+                nulls_in(column, group_ranges, max_definition)
+            }
+            ColumnReader::ByteArrayColumnReader(column) => {
+                nulls_in(column, group_ranges, max_definition)
+            }
+            ColumnReader::FixedLenByteArrayColumnReader(column) => {
+                nulls_in(column, group_ranges, max_definition)
+            }
+        }?;
+        nulls += group_nulls;
+        rows += group_rows;
+    }
+    Ok((nulls, rows))
+}
+
+/// A value is null when its definition level is below the column's maximum.
+fn nulls_in<T: DataType>(
+    mut column: ColumnReaderImpl<T>,
+    ranges: &[Range<u64>],
+    max_definition: i16,
+) -> Result<(u64, u64), ParquetError> {
+    let (mut position, mut nulls, mut rows) = (0, 0, 0);
+    let (mut levels, mut values) = (Vec::new(), Vec::new());
+    for range in ranges {
+        column.skip_records((range.start - position) as usize)?;
+        levels.clear();
+        values.clear();
+        let (read, _, _) = column.read_records(
+            (range.end - range.start) as usize,
+            Some(&mut levels),
+            None,
+            &mut values,
+        )?;
+        nulls += levels
+            .iter()
+            .filter(|&&level| level < max_definition)
+            .count() as u64;
+        rows += read as u64;
+        position = range.end;
+    }
+    Ok((nulls, rows))
 }
 
 fn add_profiles(columns: &mut [ColumnSummary], rows: &[Row], total_rows: u64) {
@@ -374,7 +559,8 @@ fn basis_of(sampled: u64, total_rows: u64) -> Basis {
     }
 }
 
-/// Counts nulls in the rows read for columns whose metadata had no null count.
+/// Counts nulls in the rows read for columns still without a null count: nested and
+/// repeated ones.
 fn fill_missing_nulls(columns: &mut [ColumnSummary], rows: &[Row], total_rows: u64) {
     let sampled = rows.len() as u64;
     let basis = basis_of(sampled, total_rows);

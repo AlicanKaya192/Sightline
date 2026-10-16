@@ -270,3 +270,57 @@ fn a_sample_reports_how_many_rows_it_used() {
     assert_eq!(sampled.sampled_rows, Some(3));
     assert_eq!(whole.sampled_rows, None);
 }
+
+/// 20,000 rows in one row group and many small pages, without statistics; only the
+/// last 1,000 rows are null, as in files where missing values sit at the end.
+fn nulls_at_the_end(name: &str) -> PathBuf {
+    let values: Vec<Option<i64>> = (0..20_000).map(|n| (n < 19_000).then_some(n)).collect();
+    let properties = WriterProperties::builder()
+        .set_statistics_enabled(EnabledStatistics::None)
+        .set_write_batch_size(100)
+        .set_data_page_row_count_limit(100)
+        .build();
+    write_parquet(
+        name,
+        "message t { optional int64 n; }",
+        &[vec![Values::Int64(values)]],
+        properties,
+    )
+}
+
+#[test]
+fn null_sample_reaches_the_end_of_a_row_group() {
+    let path = nulls_at_the_end("nulls_at_end.parquet");
+    let limits = Limits {
+        sample_rows: 1_000,
+        ..Limits::default()
+    };
+
+    let nulls = summarize(&path, &limits).columns[0]
+        .nulls
+        .expect("null count");
+
+    assert_eq!((nulls.of_rows, nulls.basis), (1_000, Basis::Sample));
+    let ratio = nulls.ratio();
+    assert!((0.03..=0.07).contains(&ratio), "null ratio {ratio}");
+}
+
+#[test]
+fn null_sample_covering_every_row_is_exact() {
+    let path = nulls_at_the_end("nulls_at_end_full.parquet");
+    let limits = Limits {
+        sample_rows: 20_000,
+        ..Limits::default()
+    };
+
+    let nulls = summarize(&path, &limits).columns[0].nulls;
+
+    assert_eq!(
+        nulls,
+        Some(NullCount {
+            count: 1_000,
+            of_rows: 20_000,
+            basis: Basis::WholeFile,
+        })
+    );
+}
