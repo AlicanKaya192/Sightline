@@ -1,9 +1,11 @@
 //! Plain text output for a terminal. Developer tool: not translated.
 
 use sightline_core::{
-    Basis, Bounds, ColumnSummary, ColumnType, NullCount, RowCount, TableFormat, TableSummary,
-    TextEncoding,
+    Basis, Bounds, ColumnSummary, ColumnType, NullCount, RowCount, Summary, TableFormat,
+    TableSummary, TextEncoding,
 };
+
+use crate::render_files::{render_array, render_model, render_pickle};
 
 /// Longer values in the first rows are cut so the table fits a terminal.
 const MAX_CELL_CHARS: usize = 32;
@@ -11,7 +13,16 @@ const LABEL_WIDTH: usize = 10;
 const MISSING: &str = "-";
 
 /// The summary as lines of text, starting with the file name.
-pub fn render_table(file_name: &str, summary: &TableSummary) -> String {
+pub fn render(file_name: &str, summary: &Summary) -> String {
+    match summary {
+        Summary::Table(table) => render_table(file_name, table),
+        Summary::Model(model) => render_model(file_name, model),
+        Summary::Array(array) => render_array(file_name, array),
+        Summary::Pickle(pickle) => render_pickle(file_name, pickle),
+    }
+}
+
+fn render_table(file_name: &str, summary: &TableSummary) -> String {
     let mut text = format!("{file_name}\n");
     text += &labelled("Format:", &format_text(&summary.format));
     text += &labelled("Rows:", &rows_text(summary.rows));
@@ -23,7 +34,7 @@ pub fn render_table(file_name: &str, summary: &TableSummary) -> String {
     text
 }
 
-fn labelled(label: &str, value: &str) -> String {
+pub fn labelled(label: &str, value: &str) -> String {
     format!("{label:<LABEL_WIDTH$}{value}\n")
 }
 
@@ -117,7 +128,7 @@ fn shortened(value: &str) -> String {
 }
 
 /// Indented rows with every column padded to its widest cell.
-fn aligned(rows: &[Vec<String>]) -> String {
+pub fn aligned(rows: &[Vec<String>]) -> String {
     let columns = rows.iter().map(Vec::len).max().unwrap_or(0);
     let widths: Vec<usize> = (0..columns)
         .map(|index| {

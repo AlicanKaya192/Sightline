@@ -39,12 +39,12 @@ impl NumberFormat {
     }
 
     /// A whole number with grouped thousands, e.g. `32,000,000`.
-    fn count(&self, number: u64) -> String {
+    pub fn count(&self, number: u64) -> String {
         group_digits(&number.to_string(), self.thousands)
     }
 
     /// A number rounded to one decimal place, e.g. `6.7`.
-    fn one_decimal(&self, number: f64) -> String {
+    pub fn one_decimal(&self, number: f64) -> String {
         let text = format!("{number:.1}");
         let (whole, fraction) = text.split_once('.').unwrap_or((&text, "0"));
         format!(
@@ -151,7 +151,7 @@ pub fn failure_info(file_name: &str, error: &ReadError) -> FailureInfo {
 }
 
 /// File size with a binary unit, e.g. `1.5 KB`.
-fn size_text(bytes: u64, format: &NumberFormat) -> String {
+pub fn size_text(bytes: u64, format: &NumberFormat) -> String {
     if bytes < KILOBYTE {
         return format!("{bytes} B");
     }
@@ -165,7 +165,7 @@ fn size_text(bytes: u64, format: &NumberFormat) -> String {
 }
 
 /// Slint numbers are `i32`; counts that large are shown as the largest value.
-fn to_int(count: usize) -> i32 {
+pub fn to_int(count: usize) -> i32 {
     i32::try_from(count).unwrap_or(i32::MAX)
 }
 
@@ -226,7 +226,7 @@ fn set_sampled(info: &mut FileInfo, sampled_rows: Option<u64>, format: &NumberFo
     }
 }
 
-fn relative_heights(bins: &[u64]) -> Vec<f32> {
+pub fn relative_heights(bins: &[u64]) -> Vec<f32> {
     let tallest = bins.iter().copied().max().unwrap_or(0).max(1) as f32;
     bins.iter().map(|&count| count as f32 / tallest).collect()
 }

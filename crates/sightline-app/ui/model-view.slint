@@ -1,0 +1,465 @@
+import { ScrollView } from "std-widgets.slint";
+import { Fact, FormatBadge, HeaderCell, NotebookButton, NotebookState, TabBar, Theme, WarningList, WarningRow } from "common.slint";
+
+export enum ModelFormat { safetensors, onnx }
+
+export enum SizeState { consistent, mismatch, bad-offsets, unknown }
+
+export struct ModelInfo {
+    name: string,
+    size: string,
+    format: ModelFormat,
+    parameters: string,
+    parameters-known: bool,
+    tensors: int,
+    size-state: SizeState,
+    ir-version: string,
+    opsets: string,
+    producer: string,
+}
+
+export struct DtypeRow {
+    name: string,
+    count: string,
+    percent: string,
+}
+
+export struct NamedValue {
+    name: string,
+    value: string,
+}
+
+export struct LayerRow {
+    name: string,
+    depth: int,
+    parameters: string,
+    tensors: int,
+}
+
+export struct TensorRow {
+    name: string,
+    dtype: string,
+    shape: string,
+    parameters: string,
+}
+
+export struct IoRow {
+    name: string,
+    input: bool,
+    dtype: string,
+    shape: string,
+}
+
+component SectionTitle inherits Text {
+    color: Theme.text-muted;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+component ValueLine inherits HorizontalLayout {
+    in property <string> name;
+    in property <string> value;
+    in property <string> note;
+    alignment: start;
+    spacing: 16px;
+
+    Text {
+        text: root.name;
+        color: Theme.text;
+        font-family: Theme.mono-font;
+        width: 320px;
+        overflow: elide;
+    }
+
+    Text {
+        text: root.value;
+        color: Theme.text;
+        font-family: Theme.mono-font;
+        horizontal-alignment: right;
+        width: 360px;
+        overflow: elide;
+    }
+
+    Text {
+        text: root.note;
+        color: Theme.text-muted;
+        horizontal-alignment: right;
+        width: 64px;
+    }
+}
+
+component ModelHeader inherits Rectangle {
+    in property <ModelInfo> info;
+    in property <NotebookState> notebook-state;
+    in property <string> notebook-detail;
+    callback open-notebook;
+    background: Theme.surface;
+
+    VerticalLayout {
+        padding-left: 20px;
+        padding-right: 20px;
+        padding-top: 16px;
+        padding-bottom: 12px;
+        spacing: 8px;
+
+        HorizontalLayout {
+            spacing: 10px;
+
+            FormatBadge {
+                text: root.info.format == ModelFormat.onnx ? "ONNX" : "SAFETENSORS";
+            }
+
+            Text {
+                text: root.info.name;
+                color: Theme.text;
+                font-size: 20px;
+                font-weight: 600;
+                vertical-alignment: center;
+                overflow: elide;
+                horizontal-stretch: 1;
+            }
+
+            NotebookButton {
+                state: root.notebook-state;
+                detail: root.notebook-detail;
+                clicked => {
+                    root.open-notebook();
+                }
+            }
+        }
+
+        HorizontalLayout {
+            alignment: start;
+            spacing: 20px;
+
+            Fact {
+                value: root.info.parameters-known ? root.info.parameters : "—";
+                label: @tr("parameters");
+            }
+
+            Fact {
+                value: root.info.tensors;
+                label: @tr("tensor" | "tensors" % root.info.tensors);
+            }
+
+            Fact {
+                value: root.info.size;
+            }
+
+            Fact {
+                value: root.size-label();
+                label: "";
+            }
+        }
+    }
+
+    pure function size-label() -> string {
+        if root.info.size-state == SizeState.consistent {
+            return @tr("size matches the header");
+        }
+        if root.info.size-state == SizeState.unknown {
+            return @tr("size not checked");
+        }
+        return @tr("size does not match the header");
+    }
+}
+
+component OverviewPanel inherits ScrollView {
+    in property <ModelInfo> info;
+    in property <[DtypeRow]> dtypes;
+    in property <[NamedValue]> metadata;
+    in property <[IoRow]> io;
+    in property <[NamedValue]> operators;
+
+    VerticalLayout {
+        alignment: start;
+        padding: 20px;
+        spacing: 8px;
+
+        SectionTitle {
+            text: @tr("Parameters by type");
+        }
+
+        for row in root.dtypes: ValueLine {
+            name: row.name;
+            value: row.count;
+            note: @tr("{}%", row.percent);
+        }
+
+        if root.info.format == ModelFormat.onnx: VerticalLayout {
+            spacing: 8px;
+            padding-top: 12px;
+
+            SectionTitle {
+                text: @tr("Model");
+            }
+
+            ValueLine {
+                name: @tr("IR version");
+                value: root.info.ir-version;
+            }
+
+            ValueLine {
+                name: @tr("Operator sets");
+                value: root.info.opsets;
+            }
+
+            ValueLine {
+                name: @tr("Made with");
+                value: root.info.producer != "" ? root.info.producer : "—";
+            }
+
+            SectionTitle {
+                text: @tr("Inputs and outputs");
+            }
+
+            for row in root.io: ValueLine {
+                name: row.name;
+                value: row.dtype + " " + row.shape;
+                note: row.input ? @tr("input") : @tr("output");
+            }
+
+            SectionTitle {
+                text: @tr("Operators");
+            }
+
+            for row in root.operators: ValueLine {
+                name: row.name;
+                value: row.value;
+            }
+        }
+
+        if root.metadata.length > 0: VerticalLayout {
+            spacing: 8px;
+            padding-top: 12px;
+
+            SectionTitle {
+                text: @tr("Metadata");
+            }
+
+            for row in root.metadata: ValueLine {
+                name: row.name;
+                value: row.value;
+            }
+        }
+    }
+}
+
+component LayerList inherits ScrollView {
+    in property <[LayerRow]> rows;
+    property <length> indent: 18px;
+
+    VerticalLayout {
+        alignment: start;
+
+        Rectangle {
+            background: Theme.surface-raised;
+
+            HorizontalLayout {
+                padding-left: 20px;
+                padding-right: 20px;
+                padding-top: 8px;
+                padding-bottom: 8px;
+                spacing: 16px;
+
+                HeaderCell {
+                    text: @tr("Layer");
+                    horizontal-stretch: 1;
+                }
+
+                HeaderCell {
+                    text: @tr("Parameters");
+                    width: 140px;
+                    horizontal-alignment: right;
+                }
+
+                HeaderCell {
+                    text: @tr("Tensors");
+                    width: 70px;
+                    horizontal-alignment: right;
+                }
+            }
+        }
+
+        for row in root.rows: Rectangle {
+            height: 28px;
+
+            HorizontalLayout {
+                padding-left: 20px + row.depth * root.indent;
+                padding-right: 20px;
+                spacing: 16px;
+
+                Text {
+                    text: row.name;
+                    color: row.depth == 0 ? Theme.text : Theme.text-muted;
+                    font-family: Theme.mono-font;
+                    font-weight: row.depth == 0 ? 600 : 400;
+                    horizontal-stretch: 1;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+
+                Text {
+                    text: row.parameters;
+                    color: Theme.text;
+                    font-family: Theme.mono-font;
+                    width: 140px;
+                    horizontal-alignment: right;
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    text: row.tensors;
+                    color: Theme.text-muted;
+                    font-family: Theme.mono-font;
+                    width: 70px;
+                    horizontal-alignment: right;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+}
+
+component TensorTable inherits ScrollView {
+    in property <[TensorRow]> rows;
+
+    VerticalLayout {
+        alignment: start;
+
+        Rectangle {
+            background: Theme.surface-raised;
+
+            HorizontalLayout {
+                padding-left: 20px;
+                padding-right: 20px;
+                padding-top: 8px;
+                padding-bottom: 8px;
+                spacing: 16px;
+
+                HeaderCell {
+                    text: @tr("Tensor");
+                    horizontal-stretch: 1;
+                }
+
+                HeaderCell {
+                    text: @tr("Type");
+                    width: 80px;
+                }
+
+                HeaderCell {
+                    text: @tr("Shape");
+                    width: 160px;
+                }
+
+                HeaderCell {
+                    text: @tr("Parameters");
+                    width: 140px;
+                    horizontal-alignment: right;
+                }
+            }
+        }
+
+        for row[index] in root.rows: Rectangle {
+            height: 28px;
+            background: Math.mod(index, 2) == 1 ? Theme.background : transparent;
+
+            HorizontalLayout {
+                padding-left: 20px;
+                padding-right: 20px;
+                spacing: 16px;
+
+                Text {
+                    text: row.name;
+                    color: Theme.text;
+                    font-family: Theme.mono-font;
+                    horizontal-stretch: 1;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+
+                Text {
+                    text: row.dtype;
+                    color: Theme.text-muted;
+                    font-family: Theme.mono-font;
+                    width: 80px;
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    text: row.shape;
+                    color: Theme.text;
+                    font-family: Theme.mono-font;
+                    width: 160px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+
+                Text {
+                    text: row.parameters;
+                    color: Theme.text;
+                    font-family: Theme.mono-font;
+                    width: 140px;
+                    horizontal-alignment: right;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+}
+
+export component ModelView inherits VerticalLayout {
+    in property <ModelInfo> info;
+    in property <[DtypeRow]> dtypes;
+    in property <[NamedValue]> metadata;
+    in property <[IoRow]> io;
+    in property <[NamedValue]> operators;
+    in property <[LayerRow]> layers;
+    in property <[TensorRow]> tensors;
+    in property <[WarningRow]> warnings;
+    in property <NotebookState> notebook-state;
+    in property <string> notebook-detail;
+    callback open-notebook;
+    property <int> current-tab: 0;
+
+    ModelHeader {
+        info: root.info;
+        notebook-state: root.notebook-state;
+        notebook-detail: root.notebook-detail;
+        open-notebook => {
+            root.open-notebook();
+        }
+    }
+
+    TabBar {
+        titles: [
+            @tr("Overview"),
+            @tr("Layers"),
+            @tr("Tensors"),
+            root.warnings.length > 0 ? @tr("Warnings ({})", root.warnings.length) : @tr("Warnings"),
+        ];
+        current <=> root.current-tab;
+    }
+
+    Rectangle {
+        background: Theme.surface;
+        vertical-stretch: 1;
+
+        if root.current-tab == 0: OverviewPanel {
+            info: root.info;
+            dtypes: root.dtypes;
+            metadata: root.metadata;
+            io: root.io;
+            operators: root.operators;
+        }
+        if root.current-tab == 1: LayerList {
+            rows: root.layers;
+        }
+        if root.current-tab == 2: TensorTable {
+            rows: root.tensors;
+        }
+        if root.current-tab == 3: WarningList {
+            warnings: root.warnings;
+        }
+    }
+}

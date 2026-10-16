@@ -2,6 +2,8 @@
 
 #![allow(dead_code)] // each test binary uses a different part of this module
 
+pub mod protobuf;
+
 use std::fs::{self, File};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -10,7 +12,7 @@ use parquet::data_type::{BoolType, ByteArray, ByteArrayType, DoubleType, Int32Ty
 use parquet::file::properties::WriterProperties;
 use parquet::file::writer::SerializedFileWriter;
 use parquet::schema::parser::parse_message_type;
-use sightline_core::{Summary, TableSummary};
+use sightline_core::{ArraySummary, ModelSummary, PickleSummary, Summary, TableSummary};
 
 pub fn fixture_path(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(name)
@@ -23,8 +25,59 @@ pub fn write_bytes(name: &str, content: &[u8]) -> PathBuf {
 }
 
 pub fn table(summary: Summary) -> TableSummary {
-    let Summary::Table(table) = summary;
-    table
+    match summary {
+        Summary::Table(table) => table,
+        other => panic!("expected a table summary, got {other:?}"),
+    }
+}
+
+pub fn model(summary: Summary) -> ModelSummary {
+    match summary {
+        Summary::Model(model) => model,
+        other => panic!("expected a model summary, got {other:?}"),
+    }
+}
+
+pub fn array(summary: Summary) -> ArraySummary {
+    match summary {
+        Summary::Array(array) => array,
+        other => panic!("expected an array summary, got {other:?}"),
+    }
+}
+
+pub fn pickle(summary: Summary) -> PickleSummary {
+    match summary {
+        Summary::Pickle(pickle) => pickle,
+        other => panic!("expected a pickle summary, got {other:?}"),
+    }
+}
+
+/// An `.npy` file of format `version` (1, 2 or 3) with the `header` dictionary text, padded
+/// with spaces and a newline the way NumPy does, then `data`.
+pub fn write_npy(name: &str, version: u8, header: &str, data: &[u8]) -> PathBuf {
+    let length_bytes = if version == 1 { 2 } else { 4 };
+    let prefix = 6 + 2 + length_bytes;
+    let unpadded = prefix + header.len() + 1;
+    let padding = (64 - unpadded % 64) % 64;
+    let text = format!("{header}{}\n", " ".repeat(padding));
+    let mut bytes = b"\x93NUMPY".to_vec();
+    bytes.extend_from_slice(&[version, 0]);
+    if version == 1 {
+        bytes.extend_from_slice(&(text.len() as u16).to_le_bytes());
+    } else {
+        bytes.extend_from_slice(&(text.len() as u32).to_le_bytes());
+    }
+    bytes.extend_from_slice(text.as_bytes());
+    bytes.extend_from_slice(data);
+    write_bytes(name, &bytes)
+}
+
+/// A safetensors file: header length, `header` JSON, then `data_len` zero bytes of weights.
+pub fn write_safetensors(name: &str, header: &str, data_len: usize) -> PathBuf {
+    let mut bytes = (header.len() as u64).to_le_bytes().to_vec();
+    bytes.extend_from_slice(header.as_bytes());
+    bytes.resize(bytes.len() + data_len, 0);
+    write_bytes(name, &bytes)
 }
 
 /// Values of one optional Parquet column inside one row group.

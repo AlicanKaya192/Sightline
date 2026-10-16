@@ -4026,6 +4026,7 @@ dependencies = [
  "csv",
  "encoding_rs",
  "parquet",
+ "serde_json",
 ]
 
 [[package]]

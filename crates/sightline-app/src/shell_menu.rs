@@ -7,7 +7,7 @@ use std::path::Path;
 use crate::registry;
 
 /// File types the menu is added to; the readers in `sightline-core` open these.
-pub const EXTENSIONS: [&str; 2] = ["csv", "parquet"];
+pub use sightline_core::EXTENSIONS;
 
 /// Adds the menu entry for every supported extension, labelled with `verb`.
 pub fn register(exe: &Path, verb: &str) -> io::Result<()> {
@@ -66,6 +66,11 @@ mod tests {
             [
                 r"Software\Classes\SystemFileAssociations\.csv\shell\Sightline",
                 r"Software\Classes\SystemFileAssociations\.parquet\shell\Sightline",
+                r"Software\Classes\SystemFileAssociations\.safetensors\shell\Sightline",
+                r"Software\Classes\SystemFileAssociations\.onnx\shell\Sightline",
+                r"Software\Classes\SystemFileAssociations\.npy\shell\Sightline",
+                r"Software\Classes\SystemFileAssociations\.pkl\shell\Sightline",
+                r"Software\Classes\SystemFileAssociations\.pickle\shell\Sightline",
             ]
         );
     }

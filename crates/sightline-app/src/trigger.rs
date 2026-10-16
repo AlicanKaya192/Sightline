@@ -201,6 +201,23 @@ mod tests {
     }
 
     #[test]
+    fn array_model_and_pickle_files_are_opened() {
+        for name in [
+            r"C:\models\model.safetensors",
+            r"C:\models\model.onnx",
+            r"C:\data\embeddings.npy",
+            r"C:\models\forest.pkl",
+            r"C:\models\forest.pickle",
+        ] {
+            assert_eq!(
+                file_to_open(&paths(&[name])),
+                Some(Path::new(name)),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
     fn extension_case_does_not_matter() {
         let selected = paths(&[r"C:\data\SALES.CSV"]);
 

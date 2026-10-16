@@ -1,0 +1,357 @@
+import { ScrollView, Palette } from "std-widgets.slint";
+
+export enum WarningKind {
+    high-nulls, looks-like-id, single-value, skewed, date-range,
+    size-mismatch, bad-offsets, external-data, pickle-inside, no-statistics,
+    runs-code, dangerous-import, stopped-early,
+}
+
+export struct WarningRow {
+    kind: WarningKind,
+    column: string,
+    first: string,
+    second: string,
+    from-sample: bool,
+}
+
+// Colors from the project template; the dark set follows the Windows theme.
+export global Theme {
+    out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
+    out property <color> background: dark ? #0E141A : #F2F4F6;
+    out property <color> surface: dark ? #151D25 : #FFFFFF;
+    out property <color> surface-raised: dark ? #1D2731 : #E8ECF0;
+    out property <color> text: dark ? #E4EAF0 : #16212B;
+    out property <color> text-muted: dark ? #98A5B2 : #56626E;
+    out property <color> line: dark ? #2A3541 : #D3DAE1;
+    out property <color> accent: dark ? #E39A48 : #A9570B;
+    out property <color> accent-soft: dark ? #3A2915 : #F5E6D4;
+    // Accent text on accent-soft; the light accent is below 4.5:1 there.
+    out property <color> accent-text: dark ? #E39A48 : #944C0A;
+    out property <color> warn: dark ? #E2B252 : #9A6410;
+    out property <color> warn-soft: dark ? #352914 : #F6EBD3;
+    // Warn text on warn-soft; the light warn is below 4.5:1 there.
+    out property <color> warn-text: dark ? #E2B252 : #85560D;
+    out property <color> info: dark ? #80B1EC : #245C9E;
+    out property <color> info-soft: dark ? #172A40 : #DCE7F4;
+    out property <color> bad: dark ? #F07A82 : #AE2730;
+    out property <color> bad-soft: dark ? #3A1A1D : #F7DEDF;
+    out property <string> mono-font: "Consolas";
+    out property <length> radius: 6px;
+}
+
+export component FormatBadge inherits Rectangle {
+    in property <string> text;
+    background: Theme.accent;
+    border-radius: 4px;
+
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        padding-top: 2px;
+        padding-bottom: 2px;
+
+        Text {
+            text: root.text;
+            color: Theme.surface;
+            font-family: Theme.mono-font;
+            font-size: 12px;
+            font-weight: 700;
+            vertical-alignment: center;
+        }
+    }
+}
+
+export component SampleChip inherits Rectangle {
+    in property <string> text;
+    background: Theme.accent-soft;
+    border-radius: 4px;
+
+    HorizontalLayout {
+        padding-left: 6px;
+        padding-right: 6px;
+
+        Text {
+            text: root.text;
+            color: Theme.accent-text;
+            font-size: 12px;
+            vertical-alignment: center;
+        }
+    }
+}
+
+export component Fact inherits HorizontalLayout {
+    in property <string> value;
+    in property <string> label;
+    spacing: 5px;
+
+    Text {
+        text: root.value;
+        color: Theme.text;
+        font-weight: 600;
+    }
+
+    Text {
+        text: root.label;
+        color: Theme.text-muted;
+    }
+}
+
+export component TabButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected;
+    in property <bool> show-focus;
+    callback clicked;
+    accessible-role: tab;
+    accessible-label: root.text;
+    border-radius: 4px;
+    border-width: root.show-focus ? 1px : 0;
+    border-color: Theme.accent;
+
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        padding-top: 9px;
+        padding-bottom: 9px;
+
+        Text {
+            text: root.text;
+            color: root.selected ? Theme.text : Theme.text-muted;
+            font-weight: root.selected ? 600 : 400;
+        }
+    }
+
+    Rectangle {
+        x: 0;
+        y: parent.height - self.height;
+        width: parent.width;
+        height: 2px;
+        background: root.selected ? Theme.accent : transparent;
+    }
+
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+// Left and right arrow keys move between tabs once the bar has focus.
+export component TabBar inherits Rectangle {
+    in property <[string]> titles;
+    in-out property <int> current;
+    background: Theme.surface;
+
+    keys := FocusScope {
+        key-pressed(event) => {
+            if event.text == Key.LeftArrow {
+                root.current = Math.max(0, root.current - 1);
+                return accept;
+            }
+            if event.text == Key.RightArrow {
+                root.current = Math.min(root.titles.length - 1, root.current + 1);
+                return accept;
+            }
+            return reject;
+        }
+
+        HorizontalLayout {
+            alignment: start;
+            padding-left: 8px;
+
+            for title[index] in root.titles: TabButton {
+                text: title;
+                selected: index == root.current;
+                show-focus: keys.has-focus && index == root.current;
+                clicked => {
+                    root.current = index;
+                }
+            }
+        }
+    }
+
+    Rectangle {
+        x: 0;
+        y: parent.height - self.height;
+        width: parent.width;
+        height: 1phx;
+        background: Theme.line;
+    }
+}
+
+export component HeaderCell inherits Text {
+    color: Theme.text-muted;
+    font-size: 12px;
+    font-weight: 600;
+    vertical-alignment: center;
+    overflow: elide;
+}
+
+// "Caution" or "note" in words as well as color, so the meaning does not rely on color.
+export component Pill inherits Rectangle {
+    in property <string> text;
+    in property <bool> caution;
+    background: root.caution ? Theme.warn-soft : Theme.info-soft;
+    border-radius: 9px;
+
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        padding-top: 2px;
+        padding-bottom: 2px;
+
+        Text {
+            text: root.text;
+            color: root.caution ? Theme.warn-text : Theme.info;
+            font-size: 12px;
+            font-weight: 600;
+        }
+    }
+}
+
+export component WarningList inherits ScrollView {
+    in property <[WarningRow]> warnings;
+
+    VerticalLayout {
+        alignment: start;
+        padding: 20px;
+        spacing: 14px;
+
+        if root.warnings.length == 0: Text {
+            text: @tr("No warnings for this file.");
+            color: Theme.text-muted;
+        }
+
+        for warning in root.warnings: HorizontalLayout {
+            spacing: 10px;
+
+            VerticalLayout {
+                alignment: start;
+                width: 64px;
+
+                Pill {
+                    text: root.is-caution(warning.kind) ? @tr("caution") : @tr("note");
+                    caution: root.is-caution(warning.kind);
+                }
+            }
+
+            Text {
+                text: root.message(warning);
+                color: Theme.text;
+                horizontal-stretch: 1;
+                wrap: word-wrap;
+            }
+
+            if warning.from-sample: VerticalLayout {
+                alignment: start;
+
+                SampleChip {
+                    text: @tr("sample");
+                }
+            }
+        }
+    }
+
+    pure function is-caution(kind: WarningKind) -> bool {
+        return kind == WarningKind.high-nulls || kind == WarningKind.single-value
+            || kind == WarningKind.size-mismatch || kind == WarningKind.bad-offsets
+            || kind == WarningKind.pickle-inside || kind == WarningKind.runs-code
+            || kind == WarningKind.dangerous-import || kind == WarningKind.stopped-early;
+    }
+
+    pure function message(warning: WarningRow) -> string {
+        if warning.kind == WarningKind.high-nulls {
+            return @tr("{0}: {1}% of the values are missing. Does an empty value mean something here, or is data missing?", warning.column, warning.first);
+        }
+        if warning.kind == WarningKind.looks-like-id {
+            return @tr("{0}: every value is different. It is probably an ID column; do not use it as a model feature.", warning.column);
+        }
+        if warning.kind == WarningKind.single-value {
+            return @tr("{0}: every value is \"{1}\". The column carries no information.", warning.column, warning.first);
+        }
+        if warning.kind == WarningKind.skewed {
+            return @tr("{0}: the distribution is strongly skewed (skewness {1}).", warning.column, warning.first);
+        }
+        if warning.kind == WarningKind.size-mismatch {
+            return @tr("The header describes a file of {0}, but the file is {1}. It may be cut short or damaged.", warning.first, warning.second);
+        }
+        if warning.kind == WarningKind.bad-offsets {
+            return @tr("{0}: the stored bytes do not match the tensor's shape and type. The file may be damaged.", warning.column);
+        }
+        if warning.kind == WarningKind.external-data {
+            return @tr("Tensors whose weights are kept in separate files, which Sightline does not open: {0}. Their sizes come from the shapes.", warning.first);
+        }
+        if warning.kind == WarningKind.pickle-inside {
+            return @tr("The array holds pickled Python objects. Sightline does not read them, because loading a pickle can run code.");
+        }
+        if warning.kind == WarningKind.no-statistics {
+            return @tr("No statistics for this type of values.");
+        }
+        if warning.kind == WarningKind.runs-code {
+            return @tr("Loading a pickle in Python can run code. Open it only if you trust where it came from. Sightline only read its opcodes.");
+        }
+        if warning.kind == WarningKind.dangerous-import {
+            return @tr("{0}: loading this file calls a function that can run commands or change files.", warning.column);
+        }
+        if warning.kind == WarningKind.stopped-early {
+            return @tr("Reading stopped before the end of the file, so the lists may be incomplete.");
+        }
+        return @tr("{0}: dates run from {1} to {2}.", warning.column, warning.first, warning.second);
+    }
+}
+
+export enum NotebookState { idle, saved, failed }
+
+// "Open in notebook" with the outcome of the last click next to it.
+export component NotebookButton inherits HorizontalLayout {
+    in property <NotebookState> state;
+    in property <string> detail;
+    callback clicked;
+    spacing: 8px;
+    alignment: end;
+
+    if root.state == NotebookState.saved: Text {
+        text: @tr("Saved to {}", root.detail);
+        color: Theme.text-muted;
+        font-size: 12px;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    if root.state == NotebookState.failed: Text {
+        text: @tr("Could not create the notebook: {}", root.detail);
+        color: Theme.bad;
+        font-size: 12px;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    Rectangle {
+        accessible-role: button;
+        accessible-label: @tr("Open in notebook");
+        background: area.has-hover ? Theme.accent-soft : Theme.surface-raised;
+        border-radius: 4px;
+        border-width: 1px;
+        border-color: Theme.line;
+
+        HorizontalLayout {
+            padding-left: 10px;
+            padding-right: 10px;
+            padding-top: 4px;
+            padding-bottom: 4px;
+
+            Text {
+                text: @tr("Open in notebook");
+                color: Theme.text;
+                font-size: 13px;
+                vertical-alignment: center;
+            }
+        }
+
+        area := TouchArea {
+            mouse-cursor: pointer;
+            clicked => {
+                root.clicked();
+            }
+        }
+    }
+}

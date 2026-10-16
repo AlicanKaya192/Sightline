@@ -1,0 +1,194 @@
+import { ScrollView } from "std-widgets.slint";
+import { Fact, FormatBadge, NotebookButton, NotebookState, SampleChip, TabBar, Theme, WarningList, WarningRow } from "common.slint";
+
+export struct ArrayInfo {
+    name: string,
+    size: string,
+    descr: string,
+    shape: string,
+    elements: string,
+    fortran-order: bool,
+    has-stats: bool,
+    values: string,
+    min: string,
+    max: string,
+    nan: string,
+    infinite: string,
+    sampled: bool,
+}
+
+component StatLine inherits HorizontalLayout {
+    in property <string> name;
+    in property <string> value;
+    spacing: 16px;
+
+    height: 26px;
+
+    Text {
+        text: root.name;
+        color: Theme.text-muted;
+        width: 160px;
+        vertical-alignment: center;
+    }
+
+    Text {
+        text: root.value;
+        color: Theme.text;
+        font-family: Theme.mono-font;
+        vertical-alignment: center;
+    }
+}
+
+component StatsPanel inherits ScrollView {
+    in property <ArrayInfo> info;
+    in property <[float]> histogram;
+    property <length> bar-width: 22px;
+    property <length> bar-gap: 4px;
+
+    VerticalLayout {
+        alignment: start;
+        padding: 20px;
+        spacing: 8px;
+
+        if !root.info.has-stats: Text {
+            text: @tr("No statistics for this type of values.");
+            color: Theme.text-muted;
+        }
+        if root.info.has-stats: StatLine {
+            name: @tr("Smallest");
+            value: root.info.min;
+        }
+        if root.info.has-stats: StatLine {
+            name: @tr("Largest");
+            value: root.info.max;
+        }
+        if root.info.has-stats: StatLine {
+            name: @tr("Not a number (NaN)");
+            value: root.info.nan;
+        }
+        if root.info.has-stats: StatLine {
+            name: @tr("Infinite");
+            value: root.info.infinite;
+        }
+        if root.info.has-stats: StatLine {
+            name: @tr("Values read");
+            value: root.info.values;
+        }
+        if root.info.has-stats && root.histogram.length > 0: Rectangle {
+            height: 120px;
+
+            for ratio[index] in root.histogram: Rectangle {
+                x: index * (root.bar-width + root.bar-gap);
+                y: parent.height - self.height;
+                width: root.bar-width;
+                height: ratio > 0 ? Math.max(2px, parent.height * ratio) : 0px;
+                border-radius: 2px;
+                background: Theme.accent;
+            }
+        }
+    }
+}
+
+export component ArrayView inherits VerticalLayout {
+    in property <ArrayInfo> info;
+    in property <[float]> histogram;
+    in property <[WarningRow]> warnings;
+    in property <NotebookState> notebook-state;
+    in property <string> notebook-detail;
+    callback open-notebook;
+    property <int> current-tab: 0;
+
+    Rectangle {
+        background: Theme.surface;
+
+        VerticalLayout {
+            padding-left: 20px;
+            padding-right: 20px;
+            padding-top: 16px;
+            padding-bottom: 12px;
+            spacing: 8px;
+
+            HorizontalLayout {
+                spacing: 10px;
+
+                FormatBadge {
+                    text: "NPY";
+                }
+
+                Text {
+                    text: root.info.name;
+                    color: Theme.text;
+                    font-size: 20px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+
+                NotebookButton {
+                    state: root.notebook-state;
+                    detail: root.notebook-detail;
+                    clicked => {
+                        root.open-notebook();
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                alignment: start;
+                spacing: 20px;
+
+                Fact {
+                    value: root.info.shape;
+                    label: @tr("shape");
+                }
+
+                Fact {
+                    value: root.info.descr;
+                    label: @tr("type");
+                }
+
+                Fact {
+                    value: root.info.elements;
+                    label: @tr("values");
+                }
+
+                Fact {
+                    value: root.info.size;
+                }
+
+                if root.info.fortran-order: Fact {
+                    value: @tr("column-major (Fortran) order");
+                }
+                if root.info.sampled: VerticalLayout {
+                    alignment: center;
+
+                    SampleChip {
+                        text: @tr("sample: {} values", root.info.values);
+                    }
+                }
+            }
+        }
+    }
+
+    TabBar {
+        titles: [
+            @tr("Values"),
+            root.warnings.length > 0 ? @tr("Warnings ({})", root.warnings.length) : @tr("Warnings"),
+        ];
+        current <=> root.current-tab;
+    }
+
+    Rectangle {
+        background: Theme.surface;
+        vertical-stretch: 1;
+
+        if root.current-tab == 0: StatsPanel {
+            info: root.info;
+            histogram: root.histogram;
+        }
+        if root.current-tab == 1: WarningList {
+            warnings: root.warnings;
+        }
+    }
+}

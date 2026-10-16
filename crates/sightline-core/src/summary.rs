@@ -4,6 +4,198 @@
 #[derive(Debug, Clone, PartialEq)]
 pub enum Summary {
     Table(TableSummary),
+    Model(ModelSummary),
+    Array(ArraySummary),
+    Pickle(PickleSummary),
+}
+
+/// Summary of a model file (safetensors, ONNX). Weights are never read.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ModelSummary {
+    pub format: ModelFormat,
+    /// Weight tensors in the order they are stored.
+    pub tensors: Vec<TensorInfo>,
+    pub size_check: SizeCheck,
+    pub warnings: Vec<FileWarning>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ModelFormat {
+    Safetensors {
+        /// The free-form `__metadata__` entries, sorted by key.
+        metadata: Vec<(String, String)>,
+    },
+    Onnx(OnnxInfo),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct OnnxInfo {
+    pub ir_version: i64,
+    /// Operator set versions by domain; the default domain is "".
+    pub opsets: Vec<(String, i64)>,
+    pub producer: String,
+    pub inputs: Vec<ValueInfo>,
+    pub outputs: Vec<ValueInfo>,
+    /// Number of nodes per operator type, most frequent first.
+    pub operators: Vec<(String, u64)>,
+}
+
+/// A graph input or output.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ValueInfo {
+    pub name: String,
+    pub dtype: Option<DType>,
+    pub shape: Vec<Dimension>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Dimension {
+    Fixed(u64),
+    /// A size chosen when the model runs, such as `batch`.
+    Named(String),
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TensorInfo {
+    pub name: String,
+    pub dtype: DType,
+    pub shape: Vec<u64>,
+}
+
+impl TensorInfo {
+    /// Number of values; `None` when it does not fit in 64 bits.
+    pub fn elements(&self) -> Option<u64> {
+        self.shape
+            .iter()
+            .try_fold(1u64, |count, &size| count.checked_mul(size))
+    }
+
+    /// Bytes the values take; `None` when the size of the type is not known.
+    pub fn bytes(&self) -> Option<u64> {
+        self.elements()?.checked_mul(self.dtype.bytes()?)
+    }
+}
+
+/// Element type of a tensor or array.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum DType {
+    Bool,
+    U8,
+    I8,
+    U16,
+    I16,
+    U32,
+    I32,
+    U64,
+    I64,
+    F16,
+    BF16,
+    F32,
+    F64,
+    F8E4M3,
+    F8E5M2,
+    Complex64,
+    Complex128,
+    Text,
+    /// A type this version does not know, by the name the file uses.
+    Other(String),
+}
+
+impl DType {
+    /// Bytes per value; `None` for text and unknown types.
+    pub fn bytes(&self) -> Option<u64> {
+        match self {
+            Self::Bool | Self::U8 | Self::I8 | Self::F8E4M3 | Self::F8E5M2 => Some(1),
+            Self::U16 | Self::I16 | Self::F16 | Self::BF16 => Some(2),
+            Self::U32 | Self::I32 | Self::F32 => Some(4),
+            Self::U64 | Self::I64 | Self::F64 | Self::Complex64 => Some(8),
+            Self::Complex128 => Some(16),
+            Self::Text | Self::Other(_) => None,
+        }
+    }
+}
+
+/// Whether the file is as long as its header says.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SizeCheck {
+    Consistent,
+    /// File size in bytes that the header describes, and the real one.
+    Mismatch {
+        expected: u64,
+        actual: u64,
+    },
+    /// The stored bytes of this tensor do not match its shape and type.
+    BadOffsets {
+        tensor: String,
+    },
+    /// A type of unknown size, or a size beyond 64 bits.
+    Unknown,
+}
+
+/// Summary of a NumPy `.npy` array.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ArraySummary {
+    /// The type as the file writes it, such as `<f4`.
+    pub descr: String,
+    pub dtype: DType,
+    pub shape: Vec<u64>,
+    pub fortran_order: bool,
+    pub size_check: SizeCheck,
+    /// `None` for types without numbers, such as text or objects.
+    pub stats: Option<ArrayStats>,
+    pub warnings: Vec<FileWarning>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ArrayStats {
+    /// Values the numbers below were computed from.
+    pub values: u64,
+    pub basis: Basis,
+    /// Smallest and largest finite value; `None` when there is none.
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+    pub nan: u64,
+    pub infinite: u64,
+    /// Counts of equal-width bins of the finite values.
+    pub histogram: Vec<u64>,
+}
+
+/// What a pickle would do when loaded, read from its opcodes without loading it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PickleSummary {
+    /// From the `PROTO` opcode; `None` for protocols 0 and 1, which have none.
+    pub protocol: Option<u8>,
+    pub opcodes: u64,
+    /// Functions and classes the pickle imports, each once, in order of appearance.
+    pub imports: Vec<PickleImport>,
+    /// Opcodes that call an imported function or class.
+    pub calls: u64,
+    pub warnings: Vec<FileWarning>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PickleImport {
+    pub module: String,
+    pub name: String,
+    pub dangerous: bool,
+}
+
+/// Something worth knowing about a model, array or pickle file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FileWarning {
+    /// ONNX weights kept in other files, which are not read.
+    ExternalData { tensors: u64 },
+    /// An object array holds pickled Python objects; its values are not read.
+    PickleInside,
+    /// No statistics for this element type (text, structured or unknown).
+    NoStatistics,
+    /// Loading a pickle can run code.
+    RunsCodeWhenLoaded,
+    /// The pickle imports a function that can harm the computer.
+    DangerousImport { module: String, name: String },
+    /// Reading stopped at a limit before the end of the file.
+    StoppedEarly,
 }
 
 /// Summary of a tabular file (CSV, Parquet).

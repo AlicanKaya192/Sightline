@@ -9,8 +9,8 @@ msgid "Drop a data file here to preview it."
 msgstr "Önizlemek için bir veri dosyasını buraya bırakın."
 
 msgctxt "EmptyView"
-msgid "Sightline reads CSV and Parquet files. The file is never changed, and nothing leaves this computer."
-msgstr "Sightline CSV ve Parquet dosyalarını okur. Dosya hiç değiştirilmez ve hiçbir şey bu bilgisayarın dışına çıkmaz."
+msgid "Sightline reads data, array and model files. The file is never changed, nothing leaves this computer, and pickles are never loaded."
+msgstr "Sightline veri, dizi ve model dosyalarını okur. Dosya hiç değiştirilmez, hiçbir şey bu bilgisayarın dışına çıkmaz ve pickle dosyaları asla yüklenmez."
 
 msgctxt "LoadingView"
 msgid "Reading {}…"
@@ -33,8 +33,8 @@ msgid "Sightline is not allowed to read this file."
 msgstr "Sightline'ın bu dosyayı okuma izni yok."
 
 msgctxt "FailureView"
-msgid "This file type is not supported. Sightline opens CSV and Parquet files."
-msgstr "Bu dosya türü desteklenmiyor. Sightline CSV ve Parquet dosyalarını açar."
+msgid "This file type is not supported. Sightline opens CSV, Parquet, NPY, safetensors, ONNX and pickle files."
+msgstr "Bu dosya türü desteklenmiyor. Sightline CSV, Parquet, NPY, safetensors, ONNX ve pickle dosyalarını açar."
 
 msgctxt "FailureView"
 msgid "The file could not be read. It may be damaged, or its content may not match its name."
@@ -229,5 +229,277 @@ msgid "Quit"
 msgstr "Çık"
 
 msgctxt "AppWindow"
-msgid "Sightline: select a CSV or Parquet file in Explorer and press Space"
-msgstr "Sightline: Gezgin'de bir CSV ya da Parquet dosyası seçip Space'e basın"
+msgid "Sightline: select a data or model file in Explorer and press Space"
+msgstr "Sightline: Gezgin'de bir veri ya da model dosyası seçip Space'e basın"
+
+msgctxt "WarningList"
+msgid "The header describes a file of {0}, but the file is {1}. It may be cut short or damaged."
+msgstr "Başlık {0} büyüklüğünde bir dosya tarif ediyor, ama dosya {1}. Dosya yarım kalmış ya da bozulmuş olabilir."
+
+msgctxt "WarningList"
+msgid "{0}: the stored bytes do not match the tensor's shape and type. The file may be damaged."
+msgstr "{0}: saklanan baytlar tensörün şekli ve türüyle uyuşmuyor. Dosya bozulmuş olabilir."
+
+msgctxt "WarningList"
+msgid "Tensors whose weights are kept in separate files, which Sightline does not open: {0}. Their sizes come from the shapes."
+msgstr "Ağırlıkları ayrı dosyalarda duran tensörler: {0}. Sightline bu dosyaları açmaz; boyutları şekillerden hesaplanır."
+
+msgctxt "WarningList"
+msgid "The array holds pickled Python objects. Sightline does not read them, because loading a pickle can run code."
+msgstr "Dizide pickle ile saklanmış Python nesneleri var. Sightline bunları okumaz, çünkü pickle açmak kod çalıştırabilir."
+
+msgctxt "WarningList"
+msgid "No statistics for this type of values."
+msgstr "Bu türdeki değerler için istatistik yok."
+
+msgctxt "WarningList"
+msgid "Loading a pickle in Python can run code. Open it only if you trust where it came from. Sightline only read its opcodes."
+msgstr "Pickle dosyasını Python'da açmak kod çalıştırabilir. Yalnızca kaynağına güveniyorsanız açın. Sightline yalnızca işlem kodlarını okudu."
+
+msgctxt "WarningList"
+msgid "{0}: loading this file calls a function that can run commands or change files."
+msgstr "{0}: bu dosya açılınca komut çalıştırabilen ya da dosya değiştirebilen bir fonksiyon çağrılır."
+
+msgctxt "WarningList"
+msgid "Reading stopped before the end of the file, so the lists may be incomplete."
+msgstr "Okuma dosyanın sonuna gelmeden durdu; listeler eksik olabilir."
+
+msgctxt "NotebookButton"
+msgid "Saved to {}"
+msgstr "Kaydedildi: {}"
+
+msgctxt "NotebookButton"
+msgid "Could not create the notebook: {}"
+msgstr "Not defteri oluşturulamadı: {}"
+
+msgctxt "NotebookButton"
+msgid "Open in notebook"
+msgstr "Not defterinde aç"
+
+msgctxt "ModelHeader"
+msgid "parameters"
+msgstr "parametre"
+
+msgctxt "ModelHeader"
+msgid "tensor"
+msgid_plural "tensors"
+msgstr[0] "tensör"
+msgstr[1] "tensör"
+
+msgctxt "ModelHeader"
+msgid "size matches the header"
+msgstr "boyut başlıkla uyuşuyor"
+
+msgctxt "ModelHeader"
+msgid "size not checked"
+msgstr "boyut denetlenmedi"
+
+msgctxt "ModelHeader"
+msgid "size does not match the header"
+msgstr "boyut başlıkla uyuşmuyor"
+
+msgctxt "OverviewPanel"
+msgid "Parameters by type"
+msgstr "Türe göre parametreler"
+
+msgctxt "OverviewPanel"
+msgid "{}%"
+msgstr "%{}"
+
+msgctxt "OverviewPanel"
+msgid "Model"
+msgstr "Model"
+
+msgctxt "OverviewPanel"
+msgid "IR version"
+msgstr "IR sürümü"
+
+msgctxt "OverviewPanel"
+msgid "Operator sets"
+msgstr "İşlem kümeleri (opset)"
+
+msgctxt "OverviewPanel"
+msgid "Made with"
+msgstr "Üreten"
+
+msgctxt "OverviewPanel"
+msgid "Inputs and outputs"
+msgstr "Girdiler ve çıktılar"
+
+msgctxt "OverviewPanel"
+msgid "input"
+msgstr "girdi"
+
+msgctxt "OverviewPanel"
+msgid "output"
+msgstr "çıktı"
+
+msgctxt "OverviewPanel"
+msgid "Operators"
+msgstr "İşlemler"
+
+msgctxt "OverviewPanel"
+msgid "Metadata"
+msgstr "Üst veri"
+
+msgctxt "LayerList"
+msgid "Layer"
+msgstr "Katman"
+
+msgctxt "LayerList"
+msgid "Parameters"
+msgstr "Parametre"
+
+msgctxt "LayerList"
+msgid "Tensors"
+msgstr "Tensör"
+
+msgctxt "TensorTable"
+msgid "Tensor"
+msgstr "Tensör"
+
+msgctxt "TensorTable"
+msgid "Type"
+msgstr "Tür"
+
+msgctxt "TensorTable"
+msgid "Shape"
+msgstr "Şekil"
+
+msgctxt "TensorTable"
+msgid "Parameters"
+msgstr "Parametre"
+
+msgctxt "ModelView"
+msgid "Overview"
+msgstr "Özet"
+
+msgctxt "ModelView"
+msgid "Layers"
+msgstr "Katmanlar"
+
+msgctxt "ModelView"
+msgid "Tensors"
+msgstr "Tensörler"
+
+msgctxt "ModelView"
+msgid "Warnings ({})"
+msgstr "Uyarılar ({})"
+
+msgctxt "ModelView"
+msgid "Warnings"
+msgstr "Uyarılar"
+
+msgctxt "StatsPanel"
+msgid "No statistics for this type of values."
+msgstr "Bu türdeki değerler için istatistik yok."
+
+msgctxt "StatsPanel"
+msgid "Smallest"
+msgstr "En küçük"
+
+msgctxt "StatsPanel"
+msgid "Largest"
+msgstr "En büyük"
+
+msgctxt "StatsPanel"
+msgid "Not a number (NaN)"
+msgstr "Sayı değil (NaN)"
+
+msgctxt "StatsPanel"
+msgid "Infinite"
+msgstr "Sonsuz"
+
+msgctxt "StatsPanel"
+msgid "Values read"
+msgstr "Okunan değer"
+
+msgctxt "ArrayView"
+msgid "shape"
+msgstr "şekil"
+
+msgctxt "ArrayView"
+msgid "type"
+msgstr "tür"
+
+msgctxt "ArrayView"
+msgid "values"
+msgstr "değer"
+
+msgctxt "ArrayView"
+msgid "column-major (Fortran) order"
+msgstr "sütun öncelikli (Fortran) sıra"
+
+msgctxt "ArrayView"
+msgid "sample: {} values"
+msgstr "örneklem: {} değer"
+
+msgctxt "ArrayView"
+msgid "Values"
+msgstr "Değerler"
+
+msgctxt "ArrayView"
+msgid "Warnings ({})"
+msgstr "Uyarılar ({})"
+
+msgctxt "ArrayView"
+msgid "Warnings"
+msgstr "Uyarılar"
+
+msgctxt "ImportList"
+msgid "Module"
+msgstr "Modül"
+
+msgctxt "ImportList"
+msgid "Function or class"
+msgstr "Fonksiyon ya da sınıf"
+
+msgctxt "ImportList"
+msgid "This pickle imports nothing."
+msgstr "Bu pickle hiçbir şey içe aktarmıyor."
+
+msgctxt "ImportList"
+msgid "dangerous"
+msgstr "tehlikeli"
+
+msgctxt "PickleView"
+msgid "0 or 1"
+msgstr "0 ya da 1"
+
+msgctxt "PickleView"
+msgid "protocol"
+msgstr "protokol"
+
+msgctxt "PickleView"
+msgid "import"
+msgid_plural "imports"
+msgstr[0] "içe aktarma"
+msgstr[1] "içe aktarma"
+
+msgctxt "PickleView"
+msgid "calls"
+msgstr "çağrı"
+
+msgctxt "PickleView"
+msgid "opcodes"
+msgstr "işlem kodu"
+
+msgctxt "PickleView"
+msgid "Do not load this file: it calls functions that can run commands or change files."
+msgstr "Bu dosyayı açmayın: komut çalıştırabilen ya da dosya değiştirebilen fonksiyonlar çağırıyor."
+
+msgctxt "PickleView"
+msgid "Loading a pickle can run code. Sightline only read its opcodes; nothing was loaded."
+msgstr "Pickle açmak kod çalıştırabilir. Sightline yalnızca işlem kodlarını okudu; hiçbir şey yüklenmedi."
+
+msgctxt "PickleView"
+msgid "Imports"
+msgstr "İçe aktarmalar"
+
+msgctxt "PickleView"
+msgid "Warnings ({})"
+msgstr "Uyarılar ({})"
+
+msgctxt "PickleView"
+msgid "Warnings"
+msgstr "Uyarılar"

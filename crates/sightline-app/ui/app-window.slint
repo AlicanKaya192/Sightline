@@ -1,6 +1,15 @@
-import { ScrollView, Spinner, Palette } from "std-widgets.slint";
+import { ScrollView, Spinner } from "std-widgets.slint";
+import { Fact, FormatBadge, HeaderCell, NotebookButton, NotebookState, SampleChip, TabBar, Theme, WarningList, WarningRow } from "common.slint";
+import { DtypeRow, IoRow, LayerRow, ModelInfo, ModelView, NamedValue, TensorRow } from "model-view.slint";
+import { ArrayInfo, ArrayView } from "array-view.slint";
+import { ImportRow, PickleInfo, PickleView } from "pickle-view.slint";
 
-export enum ViewState { empty, loading, loaded, failed }
+export { NotebookState, WarningKind, WarningRow } from "common.slint";
+export { DtypeRow, IoRow, LayerRow, ModelFormat, ModelInfo, NamedValue, SizeState, TensorRow } from "model-view.slint";
+export { ArrayInfo } from "array-view.slint";
+export { ImportRow, PickleInfo } from "pickle-view.slint";
+
+export enum ViewState { empty, loading, loaded, model, array, pickle, failed }
 
 export enum FileFormat { parquet, csv }
 
@@ -38,16 +47,6 @@ export struct SchemaRow {
     top-share: string,
 }
 
-export enum WarningKind { high-nulls, looks-like-id, single-value, skewed, date-range }
-
-export struct WarningRow {
-    kind: WarningKind,
-    column: string,
-    first: string,
-    second: string,
-    from-sample: bool,
-}
-
 export struct Cell {
     text: string,
     missing: bool,
@@ -57,88 +56,6 @@ export struct FailureInfo {
     kind: FailureKind,
     file-name: string,
     detail: string,
-}
-
-// Colors from the project template; the dark set follows the Windows theme.
-global Theme {
-    out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
-    out property <color> background: dark ? #0E141A : #F2F4F6;
-    out property <color> surface: dark ? #151D25 : #FFFFFF;
-    out property <color> surface-raised: dark ? #1D2731 : #E8ECF0;
-    out property <color> text: dark ? #E4EAF0 : #16212B;
-    out property <color> text-muted: dark ? #98A5B2 : #56626E;
-    out property <color> line: dark ? #2A3541 : #D3DAE1;
-    out property <color> accent: dark ? #E39A48 : #A9570B;
-    out property <color> accent-soft: dark ? #3A2915 : #F5E6D4;
-    // Accent text on accent-soft; the light accent is below 4.5:1 there.
-    out property <color> accent-text: dark ? #E39A48 : #944C0A;
-    out property <color> warn: dark ? #E2B252 : #9A6410;
-    out property <color> warn-soft: dark ? #352914 : #F6EBD3;
-    // Warn text on warn-soft; the light warn is below 4.5:1 there.
-    out property <color> warn-text: dark ? #E2B252 : #85560D;
-    out property <color> info: dark ? #80B1EC : #245C9E;
-    out property <color> info-soft: dark ? #172A40 : #DCE7F4;
-    out property <color> bad: dark ? #F07A82 : #AE2730;
-    out property <color> bad-soft: dark ? #3A1A1D : #F7DEDF;
-    out property <string> mono-font: "Consolas";
-    out property <length> radius: 6px;
-}
-
-component FormatBadge inherits Rectangle {
-    in property <string> text;
-    background: Theme.accent;
-    border-radius: 4px;
-
-    HorizontalLayout {
-        padding-left: 8px;
-        padding-right: 8px;
-        padding-top: 2px;
-        padding-bottom: 2px;
-
-        Text {
-            text: root.text;
-            color: Theme.surface;
-            font-family: Theme.mono-font;
-            font-size: 12px;
-            font-weight: 700;
-            vertical-alignment: center;
-        }
-    }
-}
-
-component SampleChip inherits Rectangle {
-    in property <string> text;
-    background: Theme.accent-soft;
-    border-radius: 4px;
-
-    HorizontalLayout {
-        padding-left: 6px;
-        padding-right: 6px;
-
-        Text {
-            text: root.text;
-            color: Theme.accent-text;
-            font-size: 12px;
-            vertical-alignment: center;
-        }
-    }
-}
-
-component Fact inherits HorizontalLayout {
-    in property <string> value;
-    in property <string> label;
-    spacing: 5px;
-
-    Text {
-        text: root.value;
-        color: Theme.text;
-        font-weight: 600;
-    }
-
-    Text {
-        text: root.label;
-        color: Theme.text-muted;
-    }
 }
 
 component EmptyView inherits VerticalLayout {
@@ -166,7 +83,7 @@ component EmptyView inherits VerticalLayout {
             }
 
             Text {
-                text: @tr("Sightline reads CSV and Parquet files. The file is never changed, and nothing leaves this computer.");
+                text: @tr("Sightline reads data, array and model files. The file is never changed, nothing leaves this computer, and pickles are never loaded.");
                 color: Theme.text-muted;
                 horizontal-alignment: center;
                 wrap: word-wrap;
@@ -182,6 +99,22 @@ component EmptyView inherits VerticalLayout {
 
                 FormatBadge {
                     text: "PARQUET";
+                }
+
+                FormatBadge {
+                    text: "NPY";
+                }
+
+                FormatBadge {
+                    text: "SAFETENSORS";
+                }
+
+                FormatBadge {
+                    text: "ONNX";
+                }
+
+                FormatBadge {
+                    text: "PKL";
                 }
             }
         }
@@ -278,7 +211,7 @@ component FailureView inherits VerticalLayout {
             return @tr("Sightline is not allowed to read this file.");
         }
         if root.failure.kind == FailureKind.unsupported-format {
-            return @tr("This file type is not supported. Sightline opens CSV and Parquet files.");
+            return @tr("This file type is not supported. Sightline opens CSV, Parquet, NPY, safetensors, ONNX and pickle files.");
         }
         if root.failure.kind == FailureKind.unreadable-content {
             return @tr("The file could not be read. It may be damaged, or its content may not match its name.");
@@ -289,6 +222,9 @@ component FailureView inherits VerticalLayout {
 
 component FileHeader inherits Rectangle {
     in property <FileInfo> info;
+    in property <NotebookState> notebook-state;
+    in property <string> notebook-detail;
+    callback open-notebook;
     background: Theme.surface;
 
     VerticalLayout {
@@ -313,6 +249,15 @@ component FileHeader inherits Rectangle {
                 font-weight: 600;
                 vertical-alignment: center;
                 overflow: elide;
+                horizontal-stretch: 1;
+            }
+
+            NotebookButton {
+                state: root.notebook-state;
+                detail: root.notebook-detail;
+                clicked => {
+                    root.open-notebook();
+                }
             }
         }
 
@@ -354,97 +299,6 @@ component FileHeader inherits Rectangle {
             }
         }
     }
-}
-
-component TabButton inherits Rectangle {
-    in property <string> text;
-    in property <bool> selected;
-    in property <bool> show-focus;
-    callback clicked;
-    accessible-role: tab;
-    accessible-label: root.text;
-    border-radius: 4px;
-    border-width: root.show-focus ? 1px : 0;
-    border-color: Theme.accent;
-
-    HorizontalLayout {
-        padding-left: 14px;
-        padding-right: 14px;
-        padding-top: 9px;
-        padding-bottom: 9px;
-
-        Text {
-            text: root.text;
-            color: root.selected ? Theme.text : Theme.text-muted;
-            font-weight: root.selected ? 600 : 400;
-        }
-    }
-
-    Rectangle {
-        x: 0;
-        y: parent.height - self.height;
-        width: parent.width;
-        height: 2px;
-        background: root.selected ? Theme.accent : transparent;
-    }
-
-    TouchArea {
-        mouse-cursor: pointer;
-        clicked => {
-            root.clicked();
-        }
-    }
-}
-
-// Left and right arrow keys move between tabs once the bar has focus.
-component TabBar inherits Rectangle {
-    in property <[string]> titles;
-    in-out property <int> current;
-    background: Theme.surface;
-
-    keys := FocusScope {
-        key-pressed(event) => {
-            if event.text == Key.LeftArrow {
-                root.current = Math.max(0, root.current - 1);
-                return accept;
-            }
-            if event.text == Key.RightArrow {
-                root.current = Math.min(root.titles.length - 1, root.current + 1);
-                return accept;
-            }
-            return reject;
-        }
-
-        HorizontalLayout {
-            alignment: start;
-            padding-left: 8px;
-
-            for title[index] in root.titles: TabButton {
-                text: title;
-                selected: index == root.current;
-                show-focus: keys.has-focus && index == root.current;
-                clicked => {
-                    root.current = index;
-                }
-            }
-        }
-    }
-
-    Rectangle {
-        x: 0;
-        y: parent.height - self.height;
-        width: parent.width;
-        height: 1phx;
-        background: Theme.line;
-    }
-}
-
-component HeaderCell inherits Text {
-    color: Theme.text-muted;
-    font-size: 12px;
-    font-weight: 600;
-    vertical-alignment: center;
-    overflow: elide;
 }
 
 component NullsCell inherits HorizontalLayout {
@@ -701,92 +555,6 @@ component SchemaTable inherits ScrollView {
     }
 }
 
-// "Caution" or "note" in words as well as color, so the meaning does not rely on color.
-component Pill inherits Rectangle {
-    in property <string> text;
-    in property <bool> caution;
-    background: root.caution ? Theme.warn-soft : Theme.info-soft;
-    border-radius: 9px;
-
-    HorizontalLayout {
-        padding-left: 8px;
-        padding-right: 8px;
-        padding-top: 2px;
-        padding-bottom: 2px;
-
-        Text {
-            text: root.text;
-            color: root.caution ? Theme.warn-text : Theme.info;
-            font-size: 12px;
-            font-weight: 600;
-        }
-    }
-}
-
-component WarningList inherits ScrollView {
-    in property <[WarningRow]> warnings;
-
-    VerticalLayout {
-        alignment: start;
-        padding: 20px;
-        spacing: 14px;
-
-        if root.warnings.length == 0: Text {
-            text: @tr("No warnings for this file.");
-            color: Theme.text-muted;
-        }
-
-        for warning in root.warnings: HorizontalLayout {
-            spacing: 10px;
-
-            VerticalLayout {
-                alignment: start;
-                width: 64px;
-
-                Pill {
-                    text: root.is-caution(warning.kind) ? @tr("caution") : @tr("note");
-                    caution: root.is-caution(warning.kind);
-                }
-            }
-
-            Text {
-                text: root.message(warning);
-                color: Theme.text;
-                horizontal-stretch: 1;
-                wrap: word-wrap;
-            }
-
-            if warning.from-sample: VerticalLayout {
-                alignment: start;
-
-                SampleChip {
-                    text: @tr("sample");
-                }
-            }
-        }
-    }
-
-    pure function is-caution(kind: WarningKind) -> bool {
-        return kind == WarningKind.high-nulls || kind == WarningKind.single-value;
-    }
-
-    pure function message(warning: WarningRow) -> string {
-        if warning.kind == WarningKind.high-nulls {
-            return @tr("{0}: {1}% of the values are missing. Does an empty value mean something here, or is data missing?", warning.column, warning.first);
-        }
-        if warning.kind == WarningKind.looks-like-id {
-            return @tr("{0}: every value is different. It is probably an ID column; do not use it as a model feature.", warning.column);
-        }
-        if warning.kind == WarningKind.single-value {
-            return @tr("{0}: every value is \"{1}\". The column carries no information.", warning.column, warning.first);
-        }
-        if warning.kind == WarningKind.skewed {
-            return @tr("{0}: the distribution is strongly skewed (skewness {1}).", warning.column, warning.first);
-        }
-        return @tr("{0}: dates run from {1} to {2}.", warning.column, warning.first, warning.second);
-    }
-}
-
 component HeadTable inherits ScrollView {
     in property <[string]> titles;
     in property <[[Cell]]> rows;
@@ -845,10 +613,18 @@ component PreviewView inherits VerticalLayout {
     in property <[[Cell]]> head-rows;
     in property <[[float]]> histograms;
     in property <[WarningRow]> warnings;
+    in property <NotebookState> notebook-state;
+    in property <string> notebook-detail;
+    callback open-notebook;
     property <int> current-tab: 0;
 
     FileHeader {
         info: root.info;
+        notebook-state: root.notebook-state;
+        notebook-detail: root.notebook-detail;
+        open-notebook => {
+            root.open-notebook();
+        }
     }
 
     TabBar {
@@ -889,6 +665,20 @@ export component AppWindow inherits Window {
     in property <[[float]]> histograms;
     in property <[WarningRow]> warnings;
     in property <FailureInfo> failure;
+    in property <ModelInfo> model-info;
+    in property <[DtypeRow]> dtype-rows;
+    in property <[NamedValue]> metadata-rows;
+    in property <[IoRow]> io-rows;
+    in property <[NamedValue]> operator-rows;
+    in property <[LayerRow]> layer-rows;
+    in property <[TensorRow]> tensor-rows;
+    in property <ArrayInfo> array-info;
+    in property <[float]> array-histogram;
+    in property <PickleInfo> pickle-info;
+    in property <[ImportRow]> import-rows;
+    in property <NotebookState> notebook-state;
+    in property <string> notebook-detail;
+    callback open-notebook;
     // Read when the shell menu is registered, so the menu uses the app's translation.
     out property <string> menu-verb: @tr("Preview with Sightline");
     // Read by the number formatting, so numbers follow the window's language.
@@ -898,9 +688,9 @@ export component AppWindow inherits Window {
     out property <string> tray-open: @tr("Open");
     out property <string> tray-start-with-windows: @tr("Start with Windows");
     out property <string> tray-quit: @tr("Quit");
-    out property <string> tray-tip: @tr("Sightline: select a CSV or Parquet file in Explorer and press Space");
+    out property <string> tray-tip: @tr("Sightline: select a data or model file in Explorer and press Space");
 
-    title: root.state == ViewState.loaded ? root.info.name + " — Sightline" : "Sightline";
+    title: root.shown-name() != "" ? root.shown-name() + " — Sightline" : "Sightline";
     background: Theme.background;
     default-font-family: "Segoe UI";
     default-font-size: 14px;
@@ -926,7 +716,63 @@ export component AppWindow inherits Window {
             head-rows: root.head-rows;
             histograms: root.histograms;
             warnings: root.warnings;
+            notebook-state: root.notebook-state;
+            notebook-detail: root.notebook-detail;
+            open-notebook => {
+                root.open-notebook();
+            }
         }
+        if root.state == ViewState.model: ModelView {
+            info: root.model-info;
+            dtypes: root.dtype-rows;
+            metadata: root.metadata-rows;
+            io: root.io-rows;
+            operators: root.operator-rows;
+            layers: root.layer-rows;
+            tensors: root.tensor-rows;
+            warnings: root.warnings;
+            notebook-state: root.notebook-state;
+            notebook-detail: root.notebook-detail;
+            open-notebook => {
+                root.open-notebook();
+            }
+        }
+        if root.state == ViewState.array: ArrayView {
+            info: root.array-info;
+            histogram: root.array-histogram;
+            warnings: root.warnings;
+            notebook-state: root.notebook-state;
+            notebook-detail: root.notebook-detail;
+            open-notebook => {
+                root.open-notebook();
+            }
+        }
+        if root.state == ViewState.pickle: PickleView {
+            info: root.pickle-info;
+            imports: root.import-rows;
+            warnings: root.warnings;
+            notebook-state: root.notebook-state;
+            notebook-detail: root.notebook-detail;
+            open-notebook => {
+                root.open-notebook();
+            }
+        }
+    }
+
+    pure function shown-name() -> string {
+        if root.state == ViewState.loaded {
+            return root.info.name;
+        }
+        if root.state == ViewState.model {
+            return root.model-info.name;
+        }
+        if root.state == ViewState.array {
+            return root.array-info.name;
+        }
+        if root.state == ViewState.pickle {
+            return root.pickle-info.name;
+        }
+        return "";
     }
 
     // Outline while a file is dragged over a window that already shows one.

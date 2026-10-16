@@ -1,0 +1,209 @@
+import { ScrollView } from "std-widgets.slint";
+import { Fact, FormatBadge, HeaderCell, NotebookButton, NotebookState, Pill, TabBar, Theme, WarningList, WarningRow } from "common.slint";
+
+export struct PickleInfo {
+    name: string,
+    size: string,
+    protocol: string,
+    protocol-known: bool,
+    opcodes: string,
+    imports: int,
+    calls: string,
+    dangerous: int,
+}
+
+export struct ImportRow {
+    module: string,
+    name: string,
+    dangerous: bool,
+}
+
+component ImportList inherits ScrollView {
+    in property <[ImportRow]> rows;
+
+    VerticalLayout {
+        alignment: start;
+
+        Rectangle {
+            background: Theme.surface-raised;
+
+            HorizontalLayout {
+                padding-left: 20px;
+                padding-right: 20px;
+                padding-top: 8px;
+                padding-bottom: 8px;
+                spacing: 16px;
+
+                HeaderCell {
+                    text: @tr("Module");
+                    width: 220px;
+                }
+
+                HeaderCell {
+                    text: @tr("Function or class");
+                    horizontal-stretch: 1;
+                }
+            }
+        }
+
+        if root.rows.length == 0: Text {
+            x: 20px;
+            height: 40px;
+            text: @tr("This pickle imports nothing.");
+            color: Theme.text-muted;
+            vertical-alignment: center;
+        }
+
+        for row in root.rows: Rectangle {
+            height: 30px;
+
+            HorizontalLayout {
+                padding-left: 20px;
+                padding-right: 20px;
+                spacing: 16px;
+
+                Text {
+                    text: row.module;
+                    color: Theme.text;
+                    font-family: Theme.mono-font;
+                    width: 220px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+
+                Text {
+                    text: row.name;
+                    color: Theme.text;
+                    font-family: Theme.mono-font;
+                    horizontal-stretch: 1;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+
+                if row.dangerous: VerticalLayout {
+                    alignment: center;
+
+                    Pill {
+                        text: @tr("dangerous");
+                        caution: true;
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component PickleView inherits VerticalLayout {
+    in property <PickleInfo> info;
+    in property <[ImportRow]> imports;
+    in property <[WarningRow]> warnings;
+    in property <NotebookState> notebook-state;
+    in property <string> notebook-detail;
+    callback open-notebook;
+    property <int> current-tab: 0;
+
+    Rectangle {
+        background: Theme.surface;
+
+        VerticalLayout {
+            padding-left: 20px;
+            padding-right: 20px;
+            padding-top: 16px;
+            padding-bottom: 12px;
+            spacing: 8px;
+
+            HorizontalLayout {
+                spacing: 10px;
+
+                FormatBadge {
+                    text: "PICKLE";
+                }
+
+                Text {
+                    text: root.info.name;
+                    color: Theme.text;
+                    font-size: 20px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+
+                NotebookButton {
+                    state: root.notebook-state;
+                    detail: root.notebook-detail;
+                    clicked => {
+                        root.open-notebook();
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                alignment: start;
+                spacing: 20px;
+
+                Fact {
+                    value: root.info.protocol-known ? root.info.protocol : @tr("0 or 1");
+                    label: @tr("protocol");
+                }
+
+                Fact {
+                    value: root.info.imports;
+                    label: @tr("import" | "imports" % root.info.imports);
+                }
+
+                Fact {
+                    value: root.info.calls;
+                    label: @tr("calls");
+                }
+
+                Fact {
+                    value: root.info.opcodes;
+                    label: @tr("opcodes");
+                }
+
+                Fact {
+                    value: root.info.size;
+                }
+            }
+
+            Rectangle {
+                background: root.info.dangerous > 0 ? Theme.bad-soft : Theme.warn-soft;
+                border-radius: Theme.radius;
+
+                HorizontalLayout {
+                    padding: 10px;
+
+                    Text {
+                        text: root.info.dangerous > 0
+                            ? @tr("Do not load this file: it calls functions that can run commands or change files.")
+                            : @tr("Loading a pickle can run code. Sightline only read its opcodes; nothing was loaded.");
+                        color: root.info.dangerous > 0 ? Theme.bad : Theme.warn-text;
+                        vertical-alignment: center;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+        }
+    }
+
+    TabBar {
+        titles: [
+            @tr("Imports"),
+            root.warnings.length > 0 ? @tr("Warnings ({})", root.warnings.length) : @tr("Warnings"),
+        ];
+        current <=> root.current-tab;
+    }
+
+    Rectangle {
+        background: Theme.surface;
+        vertical-stretch: 1;
+
+        if root.current-tab == 0: ImportList {
+            rows: root.imports;
+        }
+        if root.current-tab == 1: WarningList {
+            warnings: root.warnings;
+        }
+    }
+}

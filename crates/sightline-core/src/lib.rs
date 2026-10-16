@@ -1,14 +1,22 @@
 //! File readers and summaries for Sightline. Independent of any user interface.
 
 pub mod insights;
+pub mod layers;
+pub mod notebook;
 pub mod profile;
 pub mod readers;
 pub mod summary;
 
 pub use insights::insights;
+pub use layers::{LayerNode, ParameterTotals};
 pub use profile::profile;
-pub use readers::{CsvReader, Limits, ParquetReader, ReadError, Reader, summarize};
+pub use readers::{
+    CsvReader, EXTENSIONS, Limits, NpyReader, OnnxReader, ParquetReader, PickleReader, ReadError,
+    Reader, SafetensorsReader, summarize,
+};
 pub use summary::{
-    Basis, Bounds, ColumnProfile, ColumnSummary, ColumnType, Insight, InsightKind, NullCount,
-    RowCount, Shape, Summary, TableFormat, TableSummary, TextEncoding,
+    ArrayStats, ArraySummary, Basis, Bounds, ColumnProfile, ColumnSummary, ColumnType, DType,
+    Dimension, FileWarning, Insight, InsightKind, ModelFormat, ModelSummary, NullCount, OnnxInfo,
+    PickleImport, PickleSummary, RowCount, Shape, SizeCheck, Summary, TableFormat, TableSummary,
+    TensorInfo, TextEncoding, ValueInfo,
 };

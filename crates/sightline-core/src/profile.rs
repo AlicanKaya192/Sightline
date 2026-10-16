@@ -76,7 +76,7 @@ fn shape(column_type: ColumnType, counts: &HashMap<&str, u64>, positions: Option
     }
 }
 
-fn histogram(positions: &[f64]) -> Vec<u64> {
+pub(crate) fn histogram(positions: &[f64]) -> Vec<u64> {
     let min = positions.iter().copied().fold(f64::INFINITY, f64::min);
     let max = positions.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let width = max - min;

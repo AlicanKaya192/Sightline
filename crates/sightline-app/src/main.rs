@@ -1,9 +1,14 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod array_view;
 mod autostart;
 mod cli;
 mod explorer;
+mod file_view;
 mod hook;
+mod model_view;
+mod notebook_file;
+mod pickle_view;
 mod preview;
 mod registry;
 mod resident;
@@ -31,6 +36,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let previewer = Previewer::new(&window);
     open_dropped_files(&window, previewer.clone());
+    let notebook_previewer = previewer.clone();
+    window.on_open_notebook(move || notebook_previewer.open_notebook());
     if let Some(file) = options.file {
         previewer.open(file);
     }
