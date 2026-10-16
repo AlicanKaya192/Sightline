@@ -142,6 +142,19 @@ fn mild_skew_or_few_values_are_not_reported() {
 }
 
 #[test]
+fn skew_of_a_few_codes_is_not_reported() {
+    let mut codes = with_skewness(column("a", ColumnType::Integer), 1_000, 10.9);
+    codes.profile.as_mut().expect("profile").distinct = 19;
+    let mut amounts = with_skewness(column("b", ColumnType::Float), 1_000, 3.3);
+    amounts.profile.as_mut().expect("profile").distinct = 20;
+
+    assert_eq!(
+        kinds(&[codes, amounts]),
+        [InsightKind::Skewed { skewness: 3.3 }]
+    );
+}
+
+#[test]
 fn date_columns_report_their_range() {
     let mut day = column("day", ColumnType::Date);
     day.bounds = Some(Bounds {

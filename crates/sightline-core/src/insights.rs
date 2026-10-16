@@ -10,6 +10,9 @@ pub const ID_MIN_VALUES: u64 = 20;
 pub const SINGLE_VALUE_MIN_VALUES: u64 = 2;
 /// Values needed before skewness is trusted.
 pub const SKEW_MIN_VALUES: u64 = 30;
+/// Distinct values needed before skewness describes a shape; fewer are codes or small
+/// counts, where it says little.
+pub const SKEW_MIN_DISTINCT: u64 = 20;
 /// Skewness beyond this, in either direction, is reported.
 pub const SKEW_LIMIT: f64 = 2.0;
 
@@ -60,7 +63,9 @@ fn single_value(column: &ColumnSummary) -> Option<(InsightKind, Basis)> {
 fn skewed(column: &ColumnSummary) -> Option<(InsightKind, Basis)> {
     let profile = column.profile.as_ref()?;
     let skewness = profile.skewness?;
-    (profile.values >= SKEW_MIN_VALUES && skewness.abs() > SKEW_LIMIT)
+    (profile.values >= SKEW_MIN_VALUES
+        && profile.distinct >= SKEW_MIN_DISTINCT
+        && skewness.abs() > SKEW_LIMIT)
         .then_some((InsightKind::Skewed { skewness }, profile.basis))
 }
 
